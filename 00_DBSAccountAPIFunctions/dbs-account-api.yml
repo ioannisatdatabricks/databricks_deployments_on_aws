@@ -1,0 +1,546 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Custom resources wrapping the Databricks Account API
+
+#-------------------------------------------------------------------------
+Parameters:
+
+  ResourceOwner:
+    Description: The value of the Owner tag in the created resources on AWS
+    Type: String
+
+  ResourcePrefix:
+    Description: The prefix for the created resource names
+    Type: String
+    Default: DatabricksAccountAPI
+
+#-------------------------------------------------------------------------
+Resources:
+
+  #-----------------------------------
+  # Role for functions
+  BaseLambdaRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      RoleName: !Sub ${ResourcePrefix}-CustomResourceFunctionRole
+      Description: Basic execution role for the CloudFormation custom resource Lambda functions using the Databricks Account API
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  #-----------------------------------
+  # Credentials configuration
+
+  # The custom resource function
+  CredentialsConfigurationFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-CredentialsConfiguration
+      Description: The custom resource function to create a credentials configuration
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !GetAtt BaseLambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import urllib3
+          import json
+          def lambda_handler(event, context):
+            responseData = {}
+            if 'DatabricksAccountId' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
+              return
+            if 'Username' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
+              return
+            if 'Password' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
+              return
+            accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+            http = urllib3.PoolManager()
+            if event['RequestType'] == 'Create':
+              if 'CrossAccountRoleArn' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No CrossAccountRoleArn property specified")
+                return
+              if 'CredentialsName' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No CredentialsName property specified")
+                return
+              postData = {
+                "credentials_name": event['ResourceProperties']['CredentialsName'],
+                "aws_credentials": { "sts_role": { "role_arn": event['ResourceProperties']['CrossAccountRoleArn'] } }
+              }
+              response = http.request('POST', accountsAPIBaseURL + '/credentials', headers=myHeaders, body = json.dumps(postData))
+              if response.status != 201:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                return
+              responseData = json.loads(response.data.decode())
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['credentials_id'])
+              return
+            if event['RequestType'] == 'Delete':
+              response = http.request('DELETE', accountsAPIBaseURL + '/credentials/' + event['PhysicalResourceId'], headers=myHeaders)
+              if response.status != 200:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                print(errorMessage)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  
+  # The log group on CloudWatch logs
+  CredentialsConfigurationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CredentialsConfigurationFn}
+      RetentionInDays: 365
+  
+  # Example custom resource
+  # CredentialsConfiguration:
+  #   Type: Custom::CredentialsConfiguration
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     CredentialsName: String - The human-friendly name of the credentials object
+  #     CrossAccountRoleArn: String - The ARN of the cross-account role used by Databricks to deploy resources
+
+
+  #-----------------------------------
+  # Storage configuration
+
+  # The custom resource function
+  StorageConfigurationFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-StorageConfiguration
+      Description: The custom resource function to create a storage configuration
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !GetAtt BaseLambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import urllib3
+          import json
+          def lambda_handler(event, context):
+            responseData = {}
+            if 'DatabricksAccountId' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
+              return
+            if 'Username' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
+              return
+            if 'Password' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
+              return
+            accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+            http = urllib3.PoolManager()
+            if event['RequestType'] == 'Create':
+              if 'RootBucket' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No RootBucket property specified")
+                return
+              if 'StorageName' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No StorageName property specified")
+                return
+              postData = {
+                "storage_configuration_name": event['ResourceProperties']['StorageName'],
+                "root_bucket_info": { "bucket_name": event['ResourceProperties']['RootBucket'] }
+              }
+              response = http.request('POST', accountsAPIBaseURL + '/storage-configurations', headers=myHeaders, body = json.dumps(postData))
+              if response.status != 201:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                return
+              responseData = json.loads(response.data.decode())
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['storage_configuration_id'])
+              return
+            if event['RequestType'] == 'Delete':
+              response = http.request('DELETE', accountsAPIBaseURL + '/storage-configurations/' + event['PhysicalResourceId'], headers=myHeaders)
+              if response.status != 200:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                print(errorMessage)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The log group on CloudWatch logs
+  StorageConfigurationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StorageConfigurationFn}
+      RetentionInDays: 365
+
+  # Example custom resource
+  # StorageConfiguration:
+  #   Type: Custom::StorageConfiguration
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     StorageName: String - The human-friendly name of the storage object
+  #     RootBucket: String - The name of the Databricks root S3 bucket
+
+
+  #-----------------------------------
+  ### The network configuration
+
+  # The custom resource function
+  NetworkConfigurationFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-NetworkConfiguration
+      Description: The custom resource function to create a network configuration
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !GetAtt BaseLambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import urllib3
+          import json
+          def lambda_handler(event, context):
+            responseData = {}
+            if 'DatabricksAccountId' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
+              return
+            if 'Username' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
+              return
+            if 'Password' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
+              return
+            accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+            http = urllib3.PoolManager()
+            if event['RequestType'] == 'Create':
+              if 'NetworkName' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No NetworkName property specified")
+                return
+              if 'VpcId' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No VpcId property specified")
+                return
+              if ('Subnets' not in event['ResourceProperties']) or type(event['ResourceProperties']['Subnets']) != list:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Subnets property specified")
+                return
+              if ('SecurityGroups' not in event['ResourceProperties']) or type(event['ResourceProperties']['SecurityGroups']) != list:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No SecurityGroups property specified")
+                return
+              postData = {
+                "network_name": event['ResourceProperties']['NetworkName'],
+                "vpc_id": event['ResourceProperties']['VpcId'],
+                "subnet_ids": event['ResourceProperties']['Subnets'],
+                "security_group_ids": event['ResourceProperties']['SecurityGroups']
+              }
+              if ('VpcEndpoints' in event['ResourceProperties']) and (type(event['ResourceProperties']) == dict) and \
+                ('RestApiEndpointId' in event['ResourceProperties']['VpcEndpoints']) and ('DataplaneRelayEndpointId' in event['ResourceProperties']['VpcEndpoints']) and \
+                (event['ResourceProperties']['VpcEndpoints']['RestApiEndpointId'] is not None) and (len(event['ResourceProperties']['VpcEndpoints']['RestApiEndpointId']) > 0) and \
+                (event['ResourceProperties']['VpcEndpoints']['DataplaneRelayEndpointId'] is not None) and (len(event['ResourceProperties']['VpcEndpoints']['DataplaneRelayEndpointId']) > 0):
+                postData["vpc_endpoints"] = { "rest_api": [ event['ResourceProperties']['VpcEndpoints']['RestApiEndpointId'] ], "dataplane_relay": [ event['ResourceProperties']['VpcEndpoints']['DataplaneRelayEndpointId'] ] }
+              response = http.request('POST', accountsAPIBaseURL + '/networks', headers=myHeaders, body = json.dumps(postData))
+              if response.status != 201:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                return
+              responseData = json.loads(response.data.decode())
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['network_id'])
+              return
+            if event['RequestType'] == 'Delete':
+              response = http.request('DELETE', accountsAPIBaseURL + '/networks/' + event['PhysicalResourceId'], headers=myHeaders)
+              if response.status != 200:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                print(errorMessage)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The log group on CloudWatch logs
+  NetworkConfigurationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${NetworkConfigurationFn}
+      RetentionInDays: 365
+
+  # Example custom resource
+  # NetworkConfiguration:
+  #   Type: Custom::NetworkConfiguration
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     NetworkName: String - The human-friendly name of the network object
+  #     VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
+  #     Subnets:
+  #       - String - The AWS Id of the first private subnet in the above VPC
+  #       - String - The AWS Id of the second private subnet in the above VPC
+  #     SecurityGroups:
+  #       - String - The AWS Id of a security group attached to the created Databricks resources
+  #     VpcEndpoints:
+  #       RestApiEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the Rest API
+  #       DataplaneRelayEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the secure cluster relay
+
+
+  #-----------------------------------
+  ### The managed keys configuration
+
+  # The custom resource function
+  ManagedKeysConfigurationFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-ManagedKeysConfiguration
+      Description: The custom resource function to create a customer managed keys configuration
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !GetAtt BaseLambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import urllib3
+          import json
+          def lambda_handler(event, context):
+            responseData = {}
+            if 'DatabricksAccountId' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
+              return
+            if 'Username' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
+              return
+            if 'Password' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
+              return
+            accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+            http = urllib3.PoolManager()
+            if event['RequestType'] == 'Create':
+              if 'KeyArn' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No KeyArn property specified")
+                return
+              if ('UseCases' not in event['ResourceProperties']) or (type(event['ResourceProperties']['UseCases']) != list):
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No UseCases property specified")
+                return
+              postData = {
+                "aws_key_info": { "key_arn": event['ResourceProperties']['KeyArn'] },
+                "use_cases": event['ResourceProperties']['UseCases']
+              }
+              if 'KeyAlias' in event['ResourceProperties']:
+                postData['aws_key_info']['key_alias'] = event['ResourceProperties']['KeyAlias']
+              if 'ReuseKeyForClusterVolumes' in event['ResourceProperties']:
+                postData['aws_key_info']['reuse_key_for_cluster_volumes'] = event['ResourceProperties']['ReuseKeyForClusterVolumes']
+              response = http.request('POST', accountsAPIBaseURL + '/customer-managed-keys', headers=myHeaders, body = json.dumps(postData))
+              if response.status != 201:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                return
+              responseData = json.loads(response.data.decode())
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['customer_managed_key_id'])
+              return
+            if event['RequestType'] == 'Delete':
+              response = http.request('DELETE', accountsAPIBaseURL + '/customer-managed-keys/' + event['PhysicalResourceId'], headers=myHeaders)
+              if response.status != 200:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                print(errorMessage)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The log group on CloudWatch logs
+  ManagedKeysConfigurationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ManagedKeysConfigurationFn}
+      RetentionInDays: 365
+
+  # Example custom resource
+  # ManagedKeysConfiguration:
+  #   Type: Custom::ManagedKeysConfiguration
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     KeyArn: String - The ARN of the KMS key used by Databricks for encrypting customer assets in the control and data planes
+  #     KeyAlias: String - The alias of the KMS key used by Databricks for encrypting customer assets in the control and data planes
+  #     ReuseKeyForClusterVolumes: Boolean - A flag indicating whether the attached EBS volumes of the Databricks clusters will be encrypted as well
+  #     UseCases:
+  #       - MANAGED_SERVICES
+  #       - STORAGE
+
+
+  #-----------------------------------
+  ### The workspace object
+
+  # The custom resource function
+  WorkspaceFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-Workspace
+      Description: The custom resource function to create a Databricks workspace
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !GetAtt BaseLambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile: !Sub |
+          import cfnresponse
+          import urllib3
+          import json
+          def lambda_handler(event, context):
+            responseData = {}
+            if 'DatabricksAccountId' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
+              return
+            if 'Username' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
+              return
+            if 'Password' not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
+              return
+            accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+            http = urllib3.PoolManager()
+            if event['RequestType'] == 'Create':
+              if 'WorkspaceName' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No WorkspaceName property specified")
+                return
+              if 'CredentialsId' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No CredentialsId property specified")
+                return
+              if 'StorageId' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No StorageId property specified")
+                return
+              if 'NetworkId' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No NetworkId property specified")
+                return
+              postData = {
+                "workspace_name": event['ResourceProperties']['WorkspaceName'],
+                "aws_region": "${AWS::Region}",
+                "credentials_id": event['ResourceProperties']['CredentialsId'],
+                "storage_configuration_id": event['ResourceProperties']['StorageId'],
+                "network_id": event['ResourceProperties']['NetworkId']
+              }
+              if ('ManagedServicesKeyId' in event['ResourceProperties']) and (event['ResourceProperties']['ManagedServicesKeyId'] is not None) and (len(event['ResourceProperties']['ManagedServicesKeyId']) > 0):
+                postData["managed_services_customer_managed_key_id"] = event['ResourceProperties']['ManagedServicesKeyId']
+              if ('StorageKeyId' in event['ResourceProperties']) and (event['ResourceProperties']['StorageKeyId'] is not None) and (len(event['ResourceProperties']['StorageKeyId']) > 0):
+                postData["storage_customer_managed_key_id"] = event['ResourceProperties']['StorageKeyId']
+              if ('PrivateAccessId' in event['ResourceProperties']) and (event['ResourceProperties']['PrivateAccessId'] is not None) and (len(event['ResourceProperties']['PrivateAccessId']) > 0):
+                postData["private_access_settings_id"] = event['ResourceProperties']['PrivateAccessId']
+              response = http.request('POST', accountsAPIBaseURL + '/workspaces', headers=myHeaders, body = json.dumps(postData))
+              if response.status != 201:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                return
+              responseData = json.loads(response.data.decode())
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, str(responseData['workspace_id']))
+              return
+            if event['RequestType'] == 'Delete':
+              response = http.request('DELETE', accountsAPIBaseURL + '/workspaces/' + event['PhysicalResourceId'], headers=myHeaders)
+              if response.status != 200:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                print(errorMessage)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The log group on CloudWatch logs
+  WorkspaceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${WorkspaceFn}
+      RetentionInDays: 365
+
+  # Example custom resource
+  # DatabricksWorkspace:
+  #   Type: Custom::DatabricksWorkspace
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     WorkspaceName: String - The human-friendly name of the workspace object
+  #     CredentialsId: !Ref CredentialsConfiguration
+  #     StorageId: !Ref StorageConfiguration
+  #     NetworkId: !Ref NetworkConfiguration
+  #     ManagedServicesKeyId: !Ref KeysConfiguration
+  #     StorageKeyId: !Ref KeysConfiguration
+  #     PrivateAccessId: !Ref PrivateAccessConfiguration
+
+
+#-------------------------------------------------------------------------
+Outputs:
+
+  CredentialsConfigurationFnArn:
+    Description: The ARN of the CFN function creating a Databricks credentials configuration object
+    Value: !GetAtt CredentialsConfigurationFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-CredentialsConfigurationFn-Arn
+
+  StorageConfigurationFnArn:
+    Description: The ARN of the CFN function creating a Databricks storage configuration object
+    Value: !GetAtt StorageConfigurationFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-StorageConfigurationFn-Arn
+
+  NetworkConfigurationFnArn:
+    Description: The ARN of the CFN function creating a Databricks network configuration object
+    Value: !GetAtt NetworkConfigurationFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-NetworkConfigurationFn-Arn
+
+  ManagedKeysConfigurationFnArn:
+    Description: The ARN of the CFN function creating a Databricks managed keys configuration object
+    Value: !GetAtt ManagedKeysConfigurationFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ManagedKeysConfigurationFn-Arn
+
+  WorkspaceFnArn:
+    Description: The ARN of the CFN function creating a Databricks workspace
+    Value: !GetAtt WorkspaceFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-WorkspaceFn-Arn

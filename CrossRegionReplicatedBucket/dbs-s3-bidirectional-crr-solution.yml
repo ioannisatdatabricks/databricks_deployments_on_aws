@@ -1,0 +1,282 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Resources for deploying an architecture for DBS based on S3 bucket bi-directional cross-region replication
+
+#-------------------------------------------------------------------------
+Parameters:
+
+  ResourceOwner:
+    Description: The value of the Owner tag in the created resources
+    Type: String
+
+  SourceDataBucketName:
+    Description: The name of the bucket holding the original data
+    Type: String
+    AllowedPattern: '(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)'
+    ConstraintDescription: 3 to 63 characters; must contain only lowercase letters, numbers, periods (.), and dashes (-)
+
+  SourceRegion:
+    Description: The source region, where no E2 workspace deployment is available
+    Type: String
+    AllowedValues:
+      - sa-east-1
+      - eu-north-1
+      - eu-west-3
+      - eu-south-1
+      - me-south-1
+      - af-south-1
+      - ap-east-1
+      - ap-northeast-3
+      - ap-southeast-3
+    ConstraintDescription: AWS regions without E2 Workspace deployment
+
+  WorkspaceBucketName:
+    Description: The name of the bucket that is mountable by DBFS in the workspace region
+    Type: String
+    AllowedPattern: '(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)'
+    ConstraintDescription: 3 to 63 characters; must contain only lowercase letters, numbers, periods (.), and dashes (-)
+
+  WorkspaceRegion:
+    Description: The region where a Databricks Workspace can be deployed
+    Type: String
+    AllowedValues:
+      - us-east-1
+      - us-east-2
+      - us-west-1
+      - us-west-2
+      - ca-central-1
+      - eu-west-1
+      - eu-west-2
+      - eu-central-1
+      - ap-northeast-1
+      - ap-southeast-1
+      - ap-southeast-2
+      - ap-south-1
+    ConstraintDescription: AWS regions with E2 Workspace deployment
+  
+  EstablishReplication:
+    Description: Flag that determines whether a replication should be established
+    Type: String
+    AllowedValues:
+      - "yes"
+      - "no"
+
+#-------------------------------------------------------------------------
+Conditions:
+
+  IsSourceRegion:
+    !Equals [!Ref AWS::Region, !Ref SourceRegion]
+
+  IsWorkspaceRegion:
+    !Equals [!Ref AWS::Region, !Ref WorkspaceRegion]
+
+  EstablishReplicationRule:
+    !Equals [!Ref EstablishReplication, "yes"]
+
+  EstablishReplicationRuleInSourceRegion: !And
+    - !Equals [!Ref EstablishReplication, "yes"]
+    - !Equals [!Ref AWS::Region, !Ref SourceRegion]
+
+  EstablishReplicationRuleInWorkspaceRegion: !And
+    - !Equals [!Ref EstablishReplication, "yes"]
+    - !Equals [!Ref AWS::Region, !Ref WorkspaceRegion]
+
+#-------------------------------------------------------------------------
+Resources:
+
+  ##------ resources in the source region
+  S3ReplicationPolicyInSourceRegion:
+    Condition: EstablishReplicationRuleInSourceRegion
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub S3ReplicationPolicy-${AWS::Region}
+      Description: !Sub Policy used S3 for replication rules in ${AWS::Region}
+      Path: /
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 
+              - s3:Get*
+              - s3:ListBucket
+            Resource:
+              - !Sub arn:aws:s3:::${SourceDataBucketName}
+              - !Sub arn:aws:s3:::${SourceDataBucketName}/*
+          - Effect: Allow
+            Action:
+              - s3:ReplicateObject
+              - s3:ReplicateDelete
+              - s3:ReplicateTags
+              - s3:GetObjectVersionTagging
+            Resource: !Sub arn:aws:s3:::${WorkspaceBucketName}/*
+
+  S3ReplicationRoleInSourceRegion:
+    Condition: EstablishReplicationRuleInSourceRegion
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub S3ReplicationRole-${AWS::Region}
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - s3.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - !Ref S3ReplicationPolicyInSourceRegion
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  SourceDataBucket:
+    Condition: IsSourceRegion
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref SourceDataBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+            ExpiredObjectDeleteMarker: true
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+            Status: Enabled
+      ReplicationConfiguration: !If
+        - EstablishReplicationRule
+        - Role: !GetAtt S3ReplicationRoleInSourceRegion.Arn
+          Rules:
+            - Id: ReplicationRule
+              Destination:
+                Bucket: !Sub arn:aws:s3:::${WorkspaceBucketName}
+                ReplicationTime:
+                  Status: Enabled
+                  Time:
+                    Minutes: 15
+                Metrics:
+                  Status: Enabled
+                  EventThreshold:
+                    Minutes: 15
+              DeleteMarkerReplication:
+                Status: Enabled
+              Filter:
+                Prefix: ""
+              Priority: 1
+              Status: Enabled
+        - !Ref AWS::NoValue
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  ##------ resources in the workspace region
+  S3ReplicationPolicyInWorkspaceRegion:
+    Condition: EstablishReplicationRuleInWorkspaceRegion
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub S3ReplicationPolicy-${AWS::Region}
+      Description: !Sub Policy used S3 for replication rules in ${AWS::Region}
+      Path: /
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 
+              - s3:Get*
+              - s3:ListBucket
+            Resource:
+              - !Sub arn:aws:s3:::${WorkspaceBucketName}
+              - !Sub arn:aws:s3:::${WorkspaceBucketName}/*
+          - Effect: Allow
+            Action:
+              - s3:ReplicateObject
+              - s3:ReplicateDelete
+              - s3:ReplicateTags
+              - s3:GetObjectVersionTagging
+            Resource: !Sub arn:aws:s3:::${SourceDataBucketName}/*
+
+  S3ReplicationRoleInWorkspaceRegion:
+    Condition: EstablishReplicationRuleInWorkspaceRegion
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub S3ReplicationRole-${AWS::Region}
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - s3.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - !Ref S3ReplicationPolicyInWorkspaceRegion
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  WorkspaceDataBucket:
+    Condition: IsWorkspaceRegion
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref WorkspaceBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+            ExpiredObjectDeleteMarker: true
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+            Status: Enabled
+      ReplicationConfiguration: !If
+        - EstablishReplicationRule
+        - Role: !GetAtt S3ReplicationRoleInWorkspaceRegion.Arn
+          Rules:
+            - Id: ReplicationRule
+              Destination:
+                Bucket: !Sub arn:aws:s3:::${SourceDataBucketName}
+                ReplicationTime:
+                  Status: Enabled
+                  Time:
+                    Minutes: 15
+                Metrics:
+                  Status: Enabled
+                  EventThreshold:
+                    Minutes: 15
+              DeleteMarkerReplication: 
+                Status: Enabled
+              Filter:
+                Prefix: ""
+              Priority: 1
+              Status: Enabled
+        - !Ref AWS::NoValue
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
