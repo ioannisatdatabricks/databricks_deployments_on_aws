@@ -72,3 +72,4 @@ aws s3 cp --recursive /Users/ioannis.papadopoulos/Documents/DatabricksDatasets/r
 s3://dbs-ioannis-s3-bidirectional-crr-solution-source-bucket/retail-demo-data
 
 ### Mound the bucket and access the data with Databricks
+Import, edit, and run the Databricks notebook: Mount_and_use_CRR_bucket.py
