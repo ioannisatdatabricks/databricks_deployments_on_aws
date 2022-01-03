@@ -13,12 +13,65 @@ Parameters:
     Type: String
     Default: DatabricksAccountAPI
 
+  ExistingRoleArnForLambda:
+    Description: The ARN of an existing role for the custom resource Lambda functions
+    Type: String
+    Default: ''
+
+#-------------------------------------------------------------------------
+Conditions:
+
+  CreateRoleForLambda:
+    !Equals [!Ref ExistingRoleArnForLambda, ""]
+
+#-------------------------------------------------------------------------
+Mappings:
+
+  PrivateLink:
+    us-east-1:
+      "workspace": "com.amazonaws.vpce.us-east-1.vpce-svc-09143d1e626de2f04"
+      "backend": "com.amazonaws.vpce.us-east-1.vpce-svc-00018a8c3ff62ffdf"
+    us-east-2:
+      "workspace": "com.amazonaws.vpce.us-east-2.vpce-svc-041dc2b4d7796b8d3"
+      "backend": "com.amazonaws.vpce.us-east-2.vpce-svc-090a8fab0d73e39a6"
+    us-west-1:
+      "workspace": "UNSUPPORTED"
+      "backend": "UNSUPPORTED"
+    us-west-2:
+      "workspace": "com.amazonaws.vpce.us-west-2.vpce-svc-0129f463fcfbc46c5"
+      "backend": "com.amazonaws.vpce.us-west-2.vpce-svc-0158114c0c730c3bb"
+    eu-west-1:
+      "workspace": "com.amazonaws.vpce.eu-west-1.vpce-svc-0da6ebf1461278016"
+      "backend": "com.amazonaws.vpce.eu-west-1.vpce-svc-09b4eb2bc775f4e8c"
+    eu-west-2:
+      "workspace": "com.amazonaws.vpce.eu-west-2.vpce-svc-01148c7cdc1d1326c"
+      "backend": "com.amazonaws.vpce.eu-west-2.vpce-svc-05279412bf5353a45"
+    eu-central-1:
+      "workspace": "com.amazonaws.vpce.eu-central-1.vpce-svc-081f78503812597f7"
+      "backend": "com.amazonaws.vpce.eu-central-1.vpce-svc-08e5dfca9572c85c4"
+    ap-southeast-1:
+      "workspace": "com.amazonaws.vpce.ap-southeast-1.vpce-svc-02535b257fc253ff4"
+      "backend": "com.amazonaws.vpce.ap-southeast-1.vpce-svc-0557367c6fc1a0c5c"
+    ap-southeast-2:
+      "workspace": "com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b87155ddd6954974"
+      "backend": "com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b4a72e8f825495f6"
+    ap-northeast-1:
+      "workspace": "com.amazonaws.vpce.ap-northeast-1.vpce-svc-02691fd610d24fd64"
+      "backend": "com.amazonaws.vpce.ap-northeast-1.vpce-svc-02aa633bda3edbec0"
+    ap-south-1:
+      "workspace": "com.amazonaws.vpce.ap-south-1.vpce-svc-0dbfe5d9ee18d6411"
+      "backend": "com.amazonaws.vpce.ap-south-1.vpce-svc-03fd4d9b61414f3de"
+    ca-central-1:
+      "workspace": "com.amazonaws.vpce.ca-central-1.vpce-svc-0205f197ec0e28d65"
+      "backend": "com.amazonaws.vpce.ca-central-1.vpce-svc-0c4e25bdbcbfbb684"
+
 #-------------------------------------------------------------------------
 Resources:
 
   #-----------------------------------
   # Role for functions
   BaseLambdaRole:
+    Condition: CreateRoleForLambda
     Type: AWS::IAM::Role
     Properties: 
       RoleName: !Sub ${ResourcePrefix}-CustomResourceFunctionRole
@@ -49,7 +102,7 @@ Resources:
       Description: The custom resource function to create a credentials configuration
       Handler: index.lambda_handler
       MemorySize: 256
-      Role: !GetAtt BaseLambdaRole.Arn
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
       Runtime: python3.9
       Timeout: 25
       Code:
@@ -57,27 +110,18 @@ Resources:
           import cfnresponse
           import urllib3
           import json
+          def checkForMissingProperty(properties, propertyName):
+            if propertyName not in Properties:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return true
+            return false
           def lambda_handler(event, context):
-            responseData = {}
-            if 'DatabricksAccountId' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
-              return
-            if 'Username' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
-              return
-            if 'Password' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
-              return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
-              if 'CrossAccountRoleArn' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No CrossAccountRoleArn property specified")
-                return
-              if 'CredentialsName' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No CredentialsName property specified")
-                return
+              for propertName in ('CrossAccountRoleArn', 'CredentialsName'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
               postData = {
                 "credentials_name": event['ResourceProperties']['CredentialsName'],
                 "aws_credentials": { "sts_role": { "role_arn": event['ResourceProperties']['CrossAccountRoleArn'] } }
@@ -87,10 +131,9 @@ Resources:
                 errorMessage = 'Unknown Error'
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                 return
-              responseData = json.loads(response.data.decode())
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['credentials_id'])
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, json.loads(response.data.decode())['credentials_id'])
               return
             if event['RequestType'] == 'Delete':
               response = http.request('DELETE', accountsAPIBaseURL + '/credentials/' + event['PhysicalResourceId'], headers=myHeaders)
@@ -99,7 +142,7 @@ Resources:
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
                 print(errorMessage)
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -134,7 +177,7 @@ Resources:
       Description: The custom resource function to create a storage configuration
       Handler: index.lambda_handler
       MemorySize: 256
-      Role: !GetAtt BaseLambdaRole.Arn
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
       Runtime: python3.9
       Timeout: 25
       Code:
@@ -142,27 +185,18 @@ Resources:
           import cfnresponse
           import urllib3
           import json
+          def checkForMissingProperty(properties, propertyName):
+            if propertyName not in Properties:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return true
+            return false
           def lambda_handler(event, context):
-            responseData = {}
-            if 'DatabricksAccountId' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
-              return
-            if 'Username' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
-              return
-            if 'Password' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
-              return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
-              if 'RootBucket' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No RootBucket property specified")
-                return
-              if 'StorageName' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No StorageName property specified")
-                return
+              for propertName in ('RootBucket', 'StorageName'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
               postData = {
                 "storage_configuration_name": event['ResourceProperties']['StorageName'],
                 "root_bucket_info": { "bucket_name": event['ResourceProperties']['RootBucket'] }
@@ -172,10 +206,9 @@ Resources:
                 errorMessage = 'Unknown Error'
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                 return
-              responseData = json.loads(response.data.decode())
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['storage_configuration_id'])
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, json.loads(response.data.decode())['storage_configuration_id'])
               return
             if event['RequestType'] == 'Delete':
               response = http.request('DELETE', accountsAPIBaseURL + '/storage-configurations/' + event['PhysicalResourceId'], headers=myHeaders)
@@ -184,7 +217,7 @@ Resources:
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
                 print(errorMessage)
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -209,6 +242,229 @@ Resources:
 
 
   #-----------------------------------
+  ### The VPC Endpoint for the workspace (Databricks Private Link)
+
+  # The custom resource function
+  WorkspaceVpcEnpointFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-WorkspaceVpcEnpoint
+      Description: The custom resource function to create a workspace VPC endpoint
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
+      Runtime: python3.9
+      Timeout: 600
+      Code:
+        ZipFile: !Sub 
+          - |
+            import cfnresponse, urllib3, json, boto3, time
+            region = "${AWS::Region}"
+            serviceName = "${ServiceName}"
+            ec2Client = boto3.session.Session(region_name=region).client('ec2')
+            def waitForEndpointDeletion(vpcEndpointId):
+              while True:
+                try:
+                  status = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]['State']
+                  time.sleep(5)
+                except Exception as e: break
+            def waitForEndpoint(vpcEndpointId):
+              while True: # Wait for the endpoint to become available
+                try:
+                  status = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]['State']
+                  if status == 'available': break
+                except Exception as e: print(str(e))
+                time.sleep(5)
+            def checkForMissingProperty(properties, propertyName):
+              if propertyName not in Properties:
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+                return true
+              return false
+            def lambda_handler(event, context):
+              for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+              accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+              myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+              http = urllib3.PoolManager()
+              if event['RequestType'] == 'Create':
+                for propertName in ('EndpointName', 'VpcId', 'Subnets', 'SecurityGroups'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+                vpcEndpointId = None
+                try: # Create the endpoint in the VPC
+                  vpcEndpointId = ec2Client.create_vpc_endpoint(VpcEndpointType='Interface', VpcId=event['ResourceProperties']['VpcId'],
+                    ServiceName=serviceName, SubnetIds=event['ResourceProperties']['Subnets'], SecurityGroupIds=event['ResourceProperties']['SecurityGroups'],
+                    TagSpecifications=[{"ResourceType": "vpc-endpoint","Tags": [{"Key": "Owner", "Value": "${ResourceOwner}"}]}])['VpcEndpoint']['VpcEndpointId']
+                except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
+                  return
+                postData = {"vpc_endpoint_name": event['ResourceProperties']['EndpointName'], "aws_vpc_endpoint_id": vpcEndpointId, "region": region}
+                response = http.request('POST', accountsAPIBaseURL + '/vpc-endpoints', headers=myHeaders, body = json.dumps(postData))
+                if response.status != 201:
+                  try:
+                    ec2Client.delete_vpc_endpoints(VpcEndpointIds = [vpcEndpointId])
+                    waitForEndpointDeletion(vpcEndpointId)
+                  except Exception as e: print(str(e))
+                  errorMessage = 'Unknown Error'
+                  try: errorMessage = json.loads(response.data.decode())['message']
+                  except: errorMessage = response.reason
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                  return
+                dbsVpcEndpointId = json.loads(response.data.decode())['vpc_endpoint_id']
+                waitForEndpoint(vpcEndpointId)
+                ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
+                waitForEndpoint(vpcEndpointId)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
+                return
+              if event['RequestType'] == 'Delete':
+                response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
+                if response.status != 200:
+                  errorMessage = 'Unknown Error'
+                  try: errorMessage = json.loads(response.data.decode())['message']
+                  except: errorMessage = response.reason
+                  print(errorMessage)
+                else:
+                  try:
+                    awsVpcEndpointId = json.loads(response.data.decode())['aws_vpc_endpoint_id']
+                    ec2Client.delete_vpc_endpoints(VpcEndpointIds = [awsVpcEndpointId])
+                    waitForEndpointDeletion(awsVpcEndpointId)
+                  except Exception as e: print(str(e))
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+          - { ServiceName: !FindInMap [PrivateLink, !Ref AWS::Region, workspace] }
+
+  # The log group on CloudWatch logs
+  WorkspaceVpcEnpointLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${WorkspaceVpcEnpointFn}
+      RetentionInDays: 365
+
+  # Example custom resource
+  # WorkspaceVpcEnpoint:
+  #   Type: Custom::WorkspaceVpcEnpoint
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     EndpointName: String - The human-friendly name of the network object
+  #     VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
+  #     Subnets:
+  #       - String - The AWS Id of the first private subnet in the above VPC
+  #       - String - The AWS Id of the second private subnet in the above VPC
+  #     SecurityGroups:
+  #       - String - The AWS Id of a security group attached to the created Databricks resources
+
+
+  #-----------------------------------
+  ### The VPC Endpoint for the backend (Databricks Private Link)
+
+  # The custom resource function
+  BackendVpcEnpointFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-BackendVpcEnpoint
+      Description: The custom resource function to create a backend VPC endpoint
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
+      Runtime: python3.9
+      Timeout: 600
+      Code:
+        ZipFile: !Sub 
+          - |
+            import cfnresponse, urllib3, json, boto3, time
+            region = "${AWS::Region}"
+            serviceName = "${ServiceName}"
+            ec2Client = boto3.session.Session(region_name=region).client('ec2')
+            def waitForEndpointDeletion(vpcEndpointId):
+              while True:
+                try:
+                  status = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]['State']
+                  time.sleep(5)
+                except Exception as e: break
+            def waitForEndpoint(vpcEndpointId):
+              while True: # Wait for the endpoint to become available
+                try:
+                  status = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]['State']
+                  if status == 'available': break
+                except Exception as e: print(str(e))
+                time.sleep(5)
+            def checkForMissingProperty(properties, propertyName):
+              if propertyName not in Properties:
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+                return true
+              return false
+            def lambda_handler(event, context):
+              for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+              accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+              myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+              http = urllib3.PoolManager()
+              if event['RequestType'] == 'Create':
+                for propertName in ('EndpointName', 'VpcId', 'Subnets', 'SecurityGroups'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+                vpcEndpointId = None
+                try: # Create the endpoint in the VPC
+                  vpcEndpointId = ec2Client.create_vpc_endpoint(VpcEndpointType='Interface', VpcId=event['ResourceProperties']['VpcId'],
+                    ServiceName=serviceName, SubnetIds=event['ResourceProperties']['Subnets'], SecurityGroupIds=event['ResourceProperties']['SecurityGroups'],
+                    TagSpecifications=[{"ResourceType": "vpc-endpoint","Tags": [{"Key": "Owner", "Value": "${ResourceOwner}"}]}])['VpcEndpoint']['VpcEndpointId']
+                except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
+                  return
+                postData = {"vpc_endpoint_name": event['ResourceProperties']['EndpointName'], "aws_vpc_endpoint_id": vpcEndpointId, "region": region}
+                response = http.request('POST', accountsAPIBaseURL + '/vpc-endpoints', headers=myHeaders, body = json.dumps(postData))
+                if response.status != 201:
+                  try:
+                    ec2Client.delete_vpc_endpoints(VpcEndpointIds = [vpcEndpointId])
+                    waitForEndpointDeletion(vpcEndpointId)
+                  except Exception as e: print(str(e))
+                  errorMessage = 'Unknown Error'
+                  try: errorMessage = json.loads(response.data.decode())['message']
+                  except: errorMessage = response.reason
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                  return
+                dbsVpcEndpointId = json.loads(response.data.decode())['vpc_endpoint_id']
+                waitForEndpoint(vpcEndpointId)
+                ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
+                waitForEndpoint(vpcEndpointId)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
+                return
+              if event['RequestType'] == 'Delete':
+                response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
+                if response.status != 200:
+                  errorMessage = 'Unknown Error'
+                  try: errorMessage = json.loads(response.data.decode())['message']
+                  except: errorMessage = response.reason
+                  print(errorMessage)
+                else:
+                  try:
+                    awsVpcEndpointId = json.loads(response.data.decode())['aws_vpc_endpoint_id']
+                    ec2Client.delete_vpc_endpoints(VpcEndpointIds = [awsVpcEndpointId])
+                    waitForEndpointDeletion(awsVpcEndpointId)
+                  except Exception as e: print(str(e))
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+          - { ServiceName: !FindInMap [PrivateLink, !Ref AWS::Region, backend] }
+
+  # The log group on CloudWatch logs
+  BackendVpcEnpointLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BackendVpcEnpointFn}
+      RetentionInDays: 365
+
+  # Example custom resource
+  # BackendVpcEnpoint:
+  #   Type: Custom::BackendVpcEnpoint
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     EndpointName: String - The human-friendly name of the network object
+  #     VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
+  #     Subnets:
+  #       - String - The AWS Id of the first private subnet in the above VPC
+  #       - String - The AWS Id of the second private subnet in the above VPC
+  #     SecurityGroups:
+  #       - String - The AWS Id of a security group attached to the created Databricks resources
+
+  #-----------------------------------
   ### The network configuration
 
   # The custom resource function
@@ -219,7 +475,7 @@ Resources:
       Description: The custom resource function to create a network configuration
       Handler: index.lambda_handler
       MemorySize: 256
-      Role: !GetAtt BaseLambdaRole.Arn
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
       Runtime: python3.9
       Timeout: 25
       Code:
@@ -227,32 +483,28 @@ Resources:
           import cfnresponse
           import urllib3
           import json
+          def checkForMissingProperty(properties, propertyName):
+            if propertyName not in Properties:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return true
+            return false
           def lambda_handler(event, context):
-            responseData = {}
-            if 'DatabricksAccountId' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
-              return
-            if 'Username' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
-              return
-            if 'Password' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
-              return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
               if 'NetworkName' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No NetworkName property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No NetworkName property specified")
                 return
               if 'VpcId' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No VpcId property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No VpcId property specified")
                 return
               if ('Subnets' not in event['ResourceProperties']) or type(event['ResourceProperties']['Subnets']) != list:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Subnets property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No Subnets property specified")
                 return
               if ('SecurityGroups' not in event['ResourceProperties']) or type(event['ResourceProperties']['SecurityGroups']) != list:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No SecurityGroups property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No SecurityGroups property specified")
                 return
               postData = {
                 "network_name": event['ResourceProperties']['NetworkName'],
@@ -270,10 +522,9 @@ Resources:
                 errorMessage = 'Unknown Error'
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                 return
-              responseData = json.loads(response.data.decode())
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['network_id'])
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, json.loads(response.data.decode())['network_id'])
               return
             if event['RequestType'] == 'Delete':
               response = http.request('DELETE', accountsAPIBaseURL + '/networks/' + event['PhysicalResourceId'], headers=myHeaders)
@@ -282,7 +533,7 @@ Resources:
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
                 print(errorMessage)
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -314,6 +565,93 @@ Resources:
   #       DataplaneRelayEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the secure cluster relay
 
 
+  ### The private access configuration
+
+  # The custom resource function
+  PrivateAccessConfigurationFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-PrivateAccessConfiguration
+      Description: The custom resource function to create a private access configuration for a Databricks workspace
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile: !Sub |
+          import cfnresponse
+          import urllib3
+          import json
+          def checkForMissingProperty(properties, propertyName):
+            if propertyName not in Properties:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return true
+            return false
+          def lambda_handler(event, context):
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+            http = urllib3.PoolManager()
+            if event['RequestType'] == 'Create':
+              if 'PrivateAccessSettingsName' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No PrivateAccessSettingsName property specified")
+                return
+              if 'PublicAccessEnabled' not in event['ResourceProperties']:
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No PublicAccessEnabled property specified")
+                return
+              if ('AllowedVpcEndpoints' not in event['ResourceProperties']) or type(event['ResourceProperties']['AllowedVpcEndpoints']) != list:
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No AllowedVpcEndpoints property specified")
+                return
+              postData = {"private_access_settings_name": event['ResourceProperties']['PrivateAccessSettingsName'],
+                "region": "${AWS::Region}",
+                "public_access_enabled": event['ResourceProperties']['PublicAccessEnabled'],
+                "private_access_level": "ENDPOINT",
+                "allowed_vpc_endpoint_ids": event['ResourceProperties']['AllowedVpcEndpoints']
+              }
+              response = http.request('POST', accountsAPIBaseURL + '/private-access-settings', headers=myHeaders, body = json.dumps(postData))
+              if response.status != 201:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                return
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, json.loads(response.data.decode())['private_access_settings_id'])
+              return
+            if event['RequestType'] == 'Delete':
+              response = http.request('DELETE', accountsAPIBaseURL + '/private-access-settings/' + event['PhysicalResourceId'], headers=myHeaders)
+              if response.status != 200:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                print(errorMessage)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The log group on CloudWatch logs
+  PrivateAccessConfigurationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PrivateAccessConfigurationFn}
+      RetentionInDays: 365
+
+  # Example custom resource
+  # PrivateAccessConfiguration:
+  #   Type: Custom::PrivateAccessConfiguration
+  #   Properties:
+  #     ServiceToken: String - The ARN of the above Lambda function
+  #     DatabricksAccountId: String - The Databricks account id
+  #     Username: String - The Databricks user name
+  #     Password: (Hidden) String - The Databricks password
+  #     PrivateAccessSettingsName: String - The human-friendly name of the private access setings object
+  #     PublicAccessEnabled: Boolean - A flag indicating whether the workspace is accessible from the public internet
+  #     AllowedVpcEndpoints:
+  #       - !Ref WorkspaceVpcEnpoint
+  #       - !Ref BackendVpcEnpoint
+
+
   #-----------------------------------
   ### The managed keys configuration
 
@@ -325,7 +663,7 @@ Resources:
       Description: The custom resource function to create a customer managed keys configuration
       Handler: index.lambda_handler
       MemorySize: 256
-      Role: !GetAtt BaseLambdaRole.Arn
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
       Runtime: python3.9
       Timeout: 25
       Code:
@@ -333,26 +671,22 @@ Resources:
           import cfnresponse
           import urllib3
           import json
+          def checkForMissingProperty(properties, propertyName):
+            if propertyName not in Properties:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return true
+            return false
           def lambda_handler(event, context):
-            responseData = {}
-            if 'DatabricksAccountId' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
-              return
-            if 'Username' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
-              return
-            if 'Password' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
-              return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
               if 'KeyArn' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No KeyArn property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No KeyArn property specified")
                 return
               if ('UseCases' not in event['ResourceProperties']) or (type(event['ResourceProperties']['UseCases']) != list):
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No UseCases property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No UseCases property specified")
                 return
               postData = {
                 "aws_key_info": { "key_arn": event['ResourceProperties']['KeyArn'] },
@@ -367,10 +701,9 @@ Resources:
                 errorMessage = 'Unknown Error'
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                 return
-              responseData = json.loads(response.data.decode())
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, responseData['customer_managed_key_id'])
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, json.loads(response.data.decode())['customer_managed_key_id'])
               return
             if event['RequestType'] == 'Delete':
               response = http.request('DELETE', accountsAPIBaseURL + '/customer-managed-keys/' + event['PhysicalResourceId'], headers=myHeaders)
@@ -379,7 +712,7 @@ Resources:
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
                 print(errorMessage)
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -418,7 +751,7 @@ Resources:
       Description: The custom resource function to create a Databricks workspace
       Handler: index.lambda_handler
       MemorySize: 256
-      Role: !GetAtt BaseLambdaRole.Arn
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
       Runtime: python3.9
       Timeout: 25
       Code:
@@ -426,32 +759,28 @@ Resources:
           import cfnresponse
           import urllib3
           import json
+          def checkForMissingProperty(properties, propertyName):
+            if propertyName not in Properties:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return true
+            return false
           def lambda_handler(event, context):
-            responseData = {}
-            if 'DatabricksAccountId' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No DatabricksAccountId property specified")
-              return
-            if 'Username' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Username property specified")
-              return
-            if 'Password' not in event['ResourceProperties']:
-              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No Password property specified")
-              return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
               if 'WorkspaceName' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No WorkspaceName property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No WorkspaceName property specified")
                 return
               if 'CredentialsId' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No CredentialsId property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No CredentialsId property specified")
                 return
               if 'StorageId' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No StorageId property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No StorageId property specified")
                 return
               if 'NetworkId' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = "No NetworkId property specified")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No NetworkId property specified")
                 return
               postData = {
                 "workspace_name": event['ResourceProperties']['WorkspaceName'],
@@ -471,10 +800,9 @@ Resources:
                 errorMessage = 'Unknown Error'
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
-                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, reason = errorMessage)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                 return
-              responseData = json.loads(response.data.decode())
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, str(responseData['workspace_id']))
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, str(json.loads(response.data.decode())['workspace_id']))
               return
             if event['RequestType'] == 'Delete':
               response = http.request('DELETE', accountsAPIBaseURL + '/workspaces/' + event['PhysicalResourceId'], headers=myHeaders)
@@ -483,7 +811,7 @@ Resources:
                 try: errorMessage = json.loads(response.data.decode())['message']
                 except: errorMessage = response.reason
                 print(errorMessage)
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner

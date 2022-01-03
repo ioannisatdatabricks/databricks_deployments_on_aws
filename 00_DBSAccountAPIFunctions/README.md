@@ -13,5 +13,5 @@ ParameterKey=ResourcePrefix,ParameterValue=DatabricksAccountAPI \
 --template-body file://dbs-account-api.yml
 
 ## TODO
+- Test PrivateLink related custom resources
 - Support update operations for the workspace object
-- Implement functions to support PrivateLink related custom resources
