@@ -111,7 +111,7 @@ Resources:
           import urllib3
           import json
           def checkForMissingProperty(properties, propertyName):
-            if propertyName not in Properties:
+            if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
               return true
             return false
@@ -188,7 +188,7 @@ Resources:
           import urllib3
           import json
           def checkForMissingProperty(properties, propertyName):
-            if propertyName not in Properties:
+            if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
               return true
             return false
@@ -280,7 +280,7 @@ Resources:
                 except Exception as e: print(str(e))
                 time.sleep(5)
             def checkForMissingProperty(properties, propertyName):
-              if propertyName not in Properties:
+              if propertyName not in properties:
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
                 return true
               return false
@@ -394,7 +394,7 @@ Resources:
                 except Exception as e: print(str(e))
                 time.sleep(5)
             def checkForMissingProperty(properties, propertyName):
-              if propertyName not in Properties:
+              if propertyName not in properties:
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
                 return true
               return false
@@ -492,7 +492,7 @@ Resources:
           import urllib3
           import json
           def checkForMissingProperty(properties, propertyName):
-            if propertyName not in Properties:
+            if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
               return true
             return false
@@ -593,7 +593,7 @@ Resources:
           import urllib3
           import json
           def checkForMissingProperty(properties, propertyName):
-            if propertyName not in Properties:
+            if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
               return true
             return false
@@ -681,7 +681,7 @@ Resources:
           import urllib3
           import json
           def checkForMissingProperty(properties, propertyName):
-            if propertyName not in Properties:
+            if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
               return true
             return false
@@ -770,7 +770,7 @@ Resources:
           import urllib3
           import json
           def checkForMissingProperty(properties, propertyName):
-            if propertyName not in Properties:
+            if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
               return true
             return false
