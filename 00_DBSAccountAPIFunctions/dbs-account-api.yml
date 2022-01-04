@@ -113,8 +113,8 @@ Resources:
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-              return true
-            return false
+              return True
+            return False
           def lambda_handler(event, context):
             for propertName in ('DatabricksAccountId', 'Username', 'Password'):
               if checkForMissingProperty(event['ResourceProperties'], propertName): return
@@ -190,8 +190,8 @@ Resources:
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-              return true
-            return false
+              return True
+            return False
           def lambda_handler(event, context):
             for propertName in ('DatabricksAccountId', 'Username', 'Password'):
               if checkForMissingProperty(event['ResourceProperties'], propertName): return
@@ -282,8 +282,8 @@ Resources:
             def checkForMissingProperty(properties, propertyName):
               if propertyName not in properties:
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-                return true
-              return false
+                return True
+              return False
             def lambda_handler(event, context):
               for propertName in ('DatabricksAccountId', 'Username', 'Password'):
                 if checkForMissingProperty(event['ResourceProperties'], propertName): return
@@ -396,8 +396,8 @@ Resources:
             def checkForMissingProperty(properties, propertyName):
               if propertyName not in properties:
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-                return true
-              return false
+                return True
+              return False
             def lambda_handler(event, context):
               for propertName in ('DatabricksAccountId', 'Username', 'Password'):
                 if checkForMissingProperty(event['ResourceProperties'], propertName): return
@@ -494,8 +494,8 @@ Resources:
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-              return true
-            return false
+              return True
+            return False
           def lambda_handler(event, context):
             for propertName in ('DatabricksAccountId', 'Username', 'Password'):
               if checkForMissingProperty(event['ResourceProperties'], propertName): return
@@ -595,8 +595,8 @@ Resources:
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-              return true
-            return false
+              return True
+            return False
           def lambda_handler(event, context):
             for propertName in ('DatabricksAccountId', 'Username', 'Password'):
               if checkForMissingProperty(event['ResourceProperties'], propertName): return
@@ -683,8 +683,8 @@ Resources:
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-              return true
-            return false
+              return True
+            return False
           def lambda_handler(event, context):
             for propertName in ('DatabricksAccountId', 'Username', 'Password'):
               if checkForMissingProperty(event['ResourceProperties'], propertName): return
@@ -772,8 +772,8 @@ Resources:
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
-              return true
-            return false
+              return True
+            return False
           def lambda_handler(event, context):
             for propertName in ('DatabricksAccountId', 'Username', 'Password'):
               if checkForMissingProperty(event['ResourceProperties'], propertName): return
