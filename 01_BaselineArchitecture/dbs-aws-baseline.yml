@@ -43,6 +43,15 @@ Parameters:
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
 
+  DBSPrivateLinkMode:
+    Description: The Private Link setup mode for the Databricks workspace
+    Type: String
+    AllowedValues:
+      - "Off"
+      - "PublicAccessEnabled"
+      - "PublicAccessDisabled"
+    Default: "Off"
+
   DBSEncryptionKeyArn:
     Description: The existing ARN of the KMS key used for the encryption/decryption of Databricks notebooks
     Type: String
@@ -90,6 +99,12 @@ Conditions:
 
   CreateCrossAccountRole:
     !Equals [!Ref DBSCrossAccountRoleArn, ""]
+
+  EnablePrivateLink:
+    !Not [ !Equals [!Ref DBSPrivateLinkMode, "Off"] ]
+  
+  PublicAccessForPrivateLink:
+    !Equals [!Ref DBSPrivateLinkMode, "PublicAccessEnabled"]
 
 #-------------------------------------------------------------------------
 Resources:
@@ -145,7 +160,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksVPC
+          Value: !Sub ${AWS::StackName}-DatabricksVPC
   
   # Internet gateway
   DBSVpcIgw:
@@ -156,7 +171,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksVpcIgw
+          Value: !Sub ${AWS::StackName}-DatabricksVpcIgw
   #... attached to the VPC
   DBSVpcIgwAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -176,7 +191,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksPublicSubnet1
+          Value: !Sub ${AWS::StackName}-DatabricksPublicSubnet1
   DBSPublicSubnet2:
     Condition: HighAvailabilityForInternet
     Type: AWS::EC2::Subnet
@@ -189,7 +204,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksPublicSubnet2
+          Value: !Sub ${AWS::StackName}-DatabricksPublicSubnet2
 
   # The two private subnets
   DBSPrivateSubnet1:
@@ -203,7 +218,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksPrivateSubnet1
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateSubnet1
   DBSPrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties: 
@@ -215,7 +230,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksPrivateSubnet2
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateSubnet2
 
   # The Elastic IP and the NAT Gateway 1
   ElasticIPForNat1:
@@ -226,7 +241,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksNat1ElasticIP
+          Value: !Sub ${AWS::StackName}-DatabricksNat1ElasticIP
   DBSNat1:
     Type: AWS::EC2::NatGateway
     Properties: 
@@ -237,7 +252,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksNat1
+          Value: !Sub ${AWS::StackName}-DatabricksNat1
 
   #The Elastic IP and the NAT Gateway 2
   ElasticIPForNat2:
@@ -249,7 +264,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksNat2ElasticIP
+          Value: !Sub ${AWS::StackName}-DatabricksNat2ElasticIP
   DBSNat2:
     Condition: HighAvailabilityForInternet
     Type: AWS::EC2::NatGateway
@@ -261,7 +276,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksNat2
+          Value: !Sub ${AWS::StackName}-DatabricksNat2
 
   # The route table attached to the public subnets
   DBSPublicRouteTable:
@@ -272,7 +287,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksPublicRouteTable
+          Value: !Sub ${AWS::StackName}-DatabricksPublicRouteTable
   # Route to the internet
   RouteToInternetInPublicRouteTable:
     DependsOn: DBSVpcIgwAttachment
@@ -303,7 +318,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksPrivateRouteTable1
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable1
   # Route to the internet
   RouteToInternetInPrivateRouteTable1:
     Type: AWS::EC2::Route
@@ -358,14 +373,14 @@ Resources:
   DBSWorkspaceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties: 
-      GroupName: DBSWorkspaceSG
+      GroupName: !Sub ${AWS::StackName}-DBSWorkspaceSG
       VpcId: !Ref DBSVpc
       GroupDescription: Allow access from within the same security group
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DBSWorkspaceSG
+          Value: !Sub ${AWS::StackName}-DBSWorkspaceSG
   # Allow all access from the same security group
   DBSWorkspaceSecurityGroupDefaultTcpIngress:
     Type: AWS::EC2::SecurityGroupIngress
@@ -422,6 +437,7 @@ Resources:
       FromPort: 3306
       ToPort: 3306
   DBSWorkspaceSecurityGroupEgressForPrivateLink:
+    Condition: EnablePrivateLink
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
@@ -712,6 +728,50 @@ Resources:
       StorageName: !Sub ${AWS::StackName}_storage
       RootBucket: !Ref DBSRootBucket
 
+  DBSManagedKeysConfiguration:
+    Type: Custom::DBSManagedKeysConfiguration
+    Properties:
+      ServiceToken: !ImportValue dbs-account-api-ManagedKeysConfigurationFn-Arn
+      DatabricksAccountId: !Ref DBSAccountId
+      Username: !Ref DBSUsername
+      Password: !Ref DBSPassword
+      KeyArn: !If [ CreateEncryptionKey, !GetAtt EncryptionKey.Arn, !Ref DBSEncryptionKeyArn]
+      KeyAlias: !If [ CreateEncryptionKey, !Ref EncryptionKeyAlias, !Sub "alias/${DBSEncryptionKeyAlias}" ]
+      UseCases:
+        - MANAGED_SERVICES
+
+  WorkspaceVpcEnpoint:
+    Condition: EnablePrivateLink
+    Type: Custom::WorkspaceVpcEnpoint
+    Properties:
+      ServiceToken: !ImportValue dbs-account-api-WorkspaceVpcEnpointFn-Arn
+      DatabricksAccountId: !Ref DBSAccountId
+      Username: !Ref DBSUsername
+      Password: !Ref DBSPassword
+      EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
+      VpcId: !Ref DBSVpc
+      Subnets:
+        - !Ref DBSPrivateSubnet1
+        - !Ref DBSPrivateSubnet2
+      SecurityGroups:
+        - !Ref DBSWorkspaceSecurityGroup
+
+  BackendVpcEnpoint:
+    Condition: EnablePrivateLink
+    Type: Custom::BackendVpcEnpoint
+    Properties:
+      ServiceToken: !ImportValue dbs-account-api-BackendVpcEnpointFn-Arn
+      DatabricksAccountId: !Ref DBSAccountId
+      Username: !Ref DBSUsername
+      Password: !Ref DBSPassword
+      EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
+      VpcId: !Ref DBSVpc
+      Subnets:
+        - !Ref DBSPrivateSubnet1
+        - !Ref DBSPrivateSubnet2
+      SecurityGroups:
+        - !Ref DBSWorkspaceSecurityGroup
+
   DBSNetworkConfiguration:
     Type: Custom::DBSNetworkConfiguration
     Properties:
@@ -726,21 +786,24 @@ Resources:
         - !Ref DBSPrivateSubnet2
       SecurityGroups:
         - !Ref DBSWorkspaceSecurityGroup
-      # VpcEndpoints:
-      #   RestApiEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the Rest API
-      #   DataplaneRelayEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the secure cluster relay
+      VpcEndpoints: !If
+        - EnablePrivateLink
+        - RestApiEndpointId: !Ref WorkspaceVpcEnpoint
+          DataplaneRelayEndpointId: !Ref BackendVpcEnpoint
+        - !Ref AWS::NoValue
 
-  DBSManagedKeysConfiguration:
-    Type: Custom::DBSManagedKeysConfiguration
+  PrivateAccessConfiguration:
+    Condition: EnablePrivateLink
+    Type: Custom::PrivateAccessConfiguration
     Properties:
-      ServiceToken: !ImportValue dbs-account-api-ManagedKeysConfigurationFn-Arn
+      ServiceToken: String - The ARN of the above Lambda function
       DatabricksAccountId: !Ref DBSAccountId
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
-      KeyArn: !If [ CreateEncryptionKey, !GetAtt EncryptionKey.Arn, !Ref DBSEncryptionKeyArn]
-      KeyAlias: !If [ CreateEncryptionKey, !Ref EncryptionKeyAlias, !Sub "alias/${DBSEncryptionKeyAlias}" ]
-      UseCases:
-        - MANAGED_SERVICES
+      PrivateAccessSettingsName:  !Sub ${AWS::StackName}_privateAccessSettings
+      PublicAccessEnabled: !If [ PublicAccessForPrivateLink, true, false ]
+      AllowedVpcEndpoints:
+        - !Ref WorkspaceVpcEnpoint
 
   DatabricksWorkspace:
     Type: Custom::DatabricksWorkspace
@@ -754,7 +817,7 @@ Resources:
       StorageId: !Ref DBSStorageConfiguration
       NetworkId: !Ref DBSNetworkConfiguration
       ManagedServicesKeyId: !Ref DBSManagedKeysConfiguration
-      # PrivateAccessId: !Ref PrivateAccessConfiguration
+      PrivateAccessId: !If [ EnablePrivateLink, !Ref PrivateAccessConfiguration, !Ref AWS::NoValue ]
 
 
 #-------------------------------------------------------------------------
