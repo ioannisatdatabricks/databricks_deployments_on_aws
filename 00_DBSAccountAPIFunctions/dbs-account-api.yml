@@ -116,12 +116,14 @@ Resources:
               return true
             return false
           def lambda_handler(event, context):
-            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+              if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
-              for propertName in ('CrossAccountRoleArn', 'CredentialsName'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+              for propertName in ('CrossAccountRoleArn', 'CredentialsName'):
+                if checkForMissingProperty(event['ResourceProperties'], propertName): return
               postData = {
                 "credentials_name": event['ResourceProperties']['CredentialsName'],
                 "aws_credentials": { "sts_role": { "role_arn": event['ResourceProperties']['CrossAccountRoleArn'] } }
@@ -191,12 +193,14 @@ Resources:
               return true
             return false
           def lambda_handler(event, context):
-            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+              if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
-              for propertName in ('RootBucket', 'StorageName'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+              for propertName in ('RootBucket', 'StorageName'):
+                if checkForMissingProperty(event['ResourceProperties'], propertName): return
               postData = {
                 "storage_configuration_name": event['ResourceProperties']['StorageName'],
                 "root_bucket_info": { "bucket_name": event['ResourceProperties']['RootBucket'] }
@@ -281,12 +285,14 @@ Resources:
                 return true
               return false
             def lambda_handler(event, context):
-              for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+              for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+                if checkForMissingProperty(event['ResourceProperties'], propertName): return
               accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
               myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
               http = urllib3.PoolManager()
               if event['RequestType'] == 'Create':
-                for propertName in ('EndpointName', 'VpcId', 'Subnets', 'SecurityGroups'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+                for propertName in ('EndpointName', 'VpcId', 'Subnets', 'SecurityGroups'):
+                  if checkForMissingProperty(event['ResourceProperties'], propertName): return
                 vpcEndpointId = None
                 try: # Create the endpoint in the VPC
                   vpcEndpointId = ec2Client.create_vpc_endpoint(VpcEndpointType='Interface', VpcId=event['ResourceProperties']['VpcId'],
@@ -393,12 +399,14 @@ Resources:
                 return true
               return false
             def lambda_handler(event, context):
-              for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+              for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+                if checkForMissingProperty(event['ResourceProperties'], propertName): return
               accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
               myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
               http = urllib3.PoolManager()
               if event['RequestType'] == 'Create':
-                for propertName in ('EndpointName', 'VpcId', 'Subnets', 'SecurityGroups'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+                for propertName in ('EndpointName', 'VpcId', 'Subnets', 'SecurityGroups'):
+                  if checkForMissingProperty(event['ResourceProperties'], propertName): return
                 vpcEndpointId = None
                 try: # Create the endpoint in the VPC
                   vpcEndpointId = ec2Client.create_vpc_endpoint(VpcEndpointType='Interface', VpcId=event['ResourceProperties']['VpcId'],
@@ -489,7 +497,8 @@ Resources:
               return true
             return false
           def lambda_handler(event, context):
-            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+              if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
@@ -589,7 +598,8 @@ Resources:
               return true
             return false
           def lambda_handler(event, context):
-            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+              if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
@@ -677,7 +687,8 @@ Resources:
               return true
             return false
           def lambda_handler(event, context):
-            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+              if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
@@ -765,7 +776,8 @@ Resources:
               return true
             return false
           def lambda_handler(event, context):
-            for propertName in ('DatabricksAccountId', 'Username', 'Password'): if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+              if checkForMissingProperty(event['ResourceProperties'], propertName): return
             accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
