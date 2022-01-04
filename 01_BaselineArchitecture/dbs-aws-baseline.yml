@@ -590,7 +590,7 @@ Resources:
               "StringEquals":
                 "sts:ExternalId": !Ref DBSAccountId
       Policies:
-        - PolicyName: !!Sub ${AWS::StackName}-CrossAccountRolePolicy
+        - PolicyName: !Sub ${AWS::StackName}-CrossAccountRolePolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -623,7 +623,8 @@ Resources:
               - Sid: AllowPassRoleForInstanceProfile
                 Effect: Allow
                 Action: iam:PassRole
-                Resource: !GetAtt DBSInstanceProfileRole.Arn
+                # Resource: !GetAtt DBSInstanceProfileRole.Arn
+                Resource: '*'
               - Sid: InstancePoolsSupport
                 Effect: Allow
                 Action:
