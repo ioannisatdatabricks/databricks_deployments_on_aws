@@ -659,7 +659,6 @@ Resources:
   #     PublicAccessEnabled: Boolean - A flag indicating whether the workspace is accessible from the public internet
   #     AllowedVpcEndpoints:
   #       - !Ref WorkspaceVpcEnpoint
-  #       - !Ref BackendVpcEnpoint
 
 
   #-----------------------------------

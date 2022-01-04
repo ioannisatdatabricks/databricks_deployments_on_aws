@@ -26,11 +26,10 @@ Parameters:
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
   
-  # DBSPublicSubnet2CidrBlock:
-  #   Description: The CIDR block of the second public subnet for the Databricks data plane
-  #   Type: String
-  #   AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
-  #   ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+  DBSPublicSubnet2CidrBlock:
+    Description: The CIDR block of the second public subnet for the Databricks data plane. Specify only for high availability of internet access
+    Type: String
+    Default: ""
   
   DBSPrivateSubnet1CidrBlock:
     Description: The CIDR block of the first private subnet for the Databricks data plane
@@ -44,17 +43,25 @@ Parameters:
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
 
+  DBSEncryptionKeyArn:
+    Description: The existing ARN of the KMS key used for the encryption/decryption of Databricks notebooks
+    Type: String
+    Default: ""
+
   DBSEncryptionKeyAlias:
-    Description: The alias of the KMS key used for the encryption/decryption of Databricks notebooks
+    Description: The existing alias of the KMS key used for the encryption/decryption of Databricks notebooks
     Type: String
+    Default: ""
   
-  DBSInstanceProfileRoleName:
-    Description: The name of the IAM role used for the instance profile for the by Databricks clusters
+  DBSInstanceProfileArn:
+    Description: An existing ARN of the instance profile for the by Databricks clusters
     Type: String
+    Default: ""
   
-  DBSCrossAccountRoleName:
-    Description: The name of the cross-account IAM role used by Databricks to manage resources in the VPC
+  DBSCrossAccountRoleArn:
+    Description: An existing ARN for the cross-account IAM role used by Databricks to manage resources in the VPC
     Type: String
+    Default: ""
 
   DBSAccountId:
     Description: The Databricks account id
@@ -68,6 +75,21 @@ Parameters:
     Description: The Databricks account password
     Type: String
     NoEcho: true
+
+#-------------------------------------------------------------------------
+Conditions:
+
+  HighAvailabilityForInternet:
+    !Not [ !Equals [!Ref DBSPublicSubnet2CidrBlock, ""] ]
+
+  CreateEncryptionKey:
+    !Equals [!Ref DBSEncryptionKeyArn, ""]
+
+  CreateInstanceProfile:
+    !Equals [!Ref DBSInstanceProfileArn, ""]
+
+  CreateCrossAccountRole:
+    !Equals [!Ref DBSCrossAccountRoleArn, ""]
 
 #-------------------------------------------------------------------------
 Resources:
@@ -155,18 +177,19 @@ Resources:
           Value: !Ref ResourceOwner
         - Key: Name
           Value: DatabricksPublicSubnet1
-  # DBSPublicSubnet2:
-  #   Type: AWS::EC2::Subnet
-  #   Properties: 
-  #     VpcId: !Ref DBSVpc
-  #     CidrBlock: !Ref DBSPublicSubnet2CidrBlock
-  #     AvailabilityZone: !Select [1, !GetAZs ""]
-  #     MapPublicIpOnLaunch: true
-  #     Tags:
-  #       - Key: Owner
-  #         Value: !Ref ResourceOwner
-  #       - Key: Name
-  #         Value: DatabricksPublicSubnet2
+  DBSPublicSubnet2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSPublicSubnet2CidrBlock
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: DatabricksPublicSubnet2
 
   # The two private subnets
   DBSPrivateSubnet1:
@@ -216,27 +239,29 @@ Resources:
         - Key: Name
           Value: DatabricksNat1
 
-  # The Elastic IP and the NAT Gateway 2
-  # ElasticIPForNat2:
-  #   Type: AWS::EC2::EIP
-  #   Properties: 
-  #     Domain: vpc
-  #     Tags: 
-  #       - Key: Owner
-  #         Value: !Ref ResourceOwner
-  #       - Key: Name
-  #         Value: DatabricksNat2ElasticIP
-  # DBSNat2:
-  #   Type: AWS::EC2::NatGateway
-  #   Properties: 
-  #     AllocationId: !GetAtt ElasticIPForNat1.AllocationId
-  #     ConnectivityType: public
-  #     SubnetId: !Ref DBSPublicSubnet2
-  #     Tags: 
-  #       - Key: Owner
-  #         Value: !Ref ResourceOwner
-  #       - Key: Name
-  #         Value: DatabricksNat2
+  #The Elastic IP and the NAT Gateway 2
+  ElasticIPForNat2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: vpc
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: DatabricksNat2ElasticIP
+  DBSNat2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref DBSPublicSubnet2
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: DatabricksNat2
 
   # The route table attached to the public subnets
   DBSPublicRouteTable:
@@ -262,11 +287,12 @@ Resources:
     Properties: 
       RouteTableId: !Ref DBSPublicRouteTable
       SubnetId: !Ref DBSPublicSubnet1
-  # PublicSubnet2RouteTableAssociation:
-  #   Type: AWS::EC2::SubnetRouteTableAssociation
-  #   Properties: 
-  #     RouteTableId: !Ref DBSPublicRouteTable
-  #     SubnetId: !Ref DBSPublicSubnet2
+  PublicSubnet2RouteTableAssociation:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref DBSPublicRouteTable
+      SubnetId: !Ref DBSPublicSubnet2
 
   # The route table for the private subnet 1
   DBSPrivateRouteTable1:
@@ -308,8 +334,7 @@ Resources:
     Properties:
       RouteTableId: !Ref DBSPrivateRouteTable2
       DestinationCidrBlock: 0.0.0.0/0
-      # NatGatewayId: !Ref DBSNat2
-      NatGatewayId: !Ref DBSNat1
+      NatGatewayId: !If [ HighAvailabilityForInternet, !Ref DBSNat2, !Ref DBSNat1 ]
   # Associate the route table to the subnets
   PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -476,6 +501,7 @@ Resources:
 
   # The KMS CMK for the notebook encryption
   EncryptionKey:
+    Condition: CreateEncryptionKey
     Type: AWS::KMS::Key
     Properties:
       Description: KMS Key used by Databricks to encrypt/decrypt the notebooks for a workspace
@@ -501,16 +527,18 @@ Resources:
           Value: !Ref ResourceOwner
   # The alias for the key
   EncryptionKeyAlias:
+    Condition: CreateEncryptionKey
     Type: AWS::KMS::Alias
     Properties:
-      AliasName: !Sub alias/${DBSEncryptionKeyAlias}
+      AliasName: !Sub alias/${AWS::StackName}
       TargetKeyId: !Ref EncryptionKey
 
   # The role for the instance profile for the cluster
   DBSInstanceProfileRole:
+    Condition: CreateInstanceProfile
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Ref DBSInstanceProfileRoleName
+      RoleName: !Sub ${AWS::StackName}-DBSInstanceProfileRole
       Description: The role used for the instance profile for the by Databricks clusters
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -521,7 +549,7 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       Policies:
-        - PolicyName: !Sub ${DBSInstanceProfileRoleName}-Policy
+        - PolicyName: !Sub ${AWS::StackName}-DBSInstanceProfilePolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -536,18 +564,20 @@ Resources:
           Value: !Ref ResourceOwner
   # The instance profile
   DBSInstanceProfile:
+    Condition: CreateInstanceProfile
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Ref DBSInstanceProfileRoleName
+      InstanceProfileName: !Sub ${AWS::StackName}-DBSInstanceProfile
       Roles:
         - !Ref DBSInstanceProfileRole
 
   # The cross account role for databricks
   DBSCrossAccountIAMRole:
+    Condition: CreateCrossAccountRole
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Ref DBSCrossAccountRoleName
-      Description: The name of the cross-account IAM role used by Databricks to manage resources in the VPC
+      RoleName: !Sub ${AWS::StackName}-CrossAccountRole
+      Description: The cross-account IAM role used by Databricks to manage resources in the VPC
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -560,7 +590,7 @@ Resources:
               "StringEquals":
                 "sts:ExternalId": !Ref DBSAccountId
       Policies:
-        - PolicyName: !Sub ${DBSCrossAccountRoleName}-Policy
+        - PolicyName: !!Sub ${AWS::StackName}-CrossAccountRolePolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -669,7 +699,7 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       CredentialsName: !Sub ${AWS::StackName}_credentials
-      CrossAccountRoleArn: !GetAtt DBSCrossAccountIAMRole.Arn
+      CrossAccountRoleArn: !If [CreateCrossAccountRole, !GetAtt DBSCrossAccountIAMRole.Arn, !Ref DBSCrossAccountRoleArn]
 
   DBSStorageConfiguration:
     Type: Custom::DBSStorageConfiguration
@@ -706,8 +736,8 @@ Resources:
       DatabricksAccountId: !Ref DBSAccountId
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
-      KeyArn: !GetAtt EncryptionKey.Arn
-      KeyAlias: !Ref EncryptionKeyAlias
+      KeyArn: !If [ CreateEncryptionKey, !GetAtt EncryptionKey.Arn, !Ref DBSEncryptionKeyArn]
+      KeyAlias: !If [ CreateEncryptionKey, !Ref EncryptionKeyAlias, !Sub "alias/${DBSEncryptionKeyAlias}" ]
       UseCases:
         - MANAGED_SERVICES
 
@@ -731,4 +761,4 @@ Outputs:
 
   InstanceProfileArn:
     Description: The ARN of the instance profile for the Databricks cluster
-    Value: !GetAtt DBSInstanceProfile.Arn
+    Value: !If [ CreateInstanceProfile, !GetAtt DBSInstanceProfile.Arn, !Ref DBSInstanceProfileArn]
