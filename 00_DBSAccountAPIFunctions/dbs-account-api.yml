@@ -763,12 +763,10 @@ Resources:
       MemorySize: 256
       Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
       Runtime: python3.9
-      Timeout: 25
+      Timeout: 600
       Code:
         ZipFile: !Sub |
-          import cfnresponse
-          import urllib3
-          import json
+          import cfnresponse, urllib3, json, time
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -781,18 +779,8 @@ Resources:
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
             http = urllib3.PoolManager()
             if event['RequestType'] == 'Create':
-              if 'WorkspaceName' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No WorkspaceName property specified")
-                return
-              if 'CredentialsId' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No CredentialsId property specified")
-                return
-              if 'StorageId' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No StorageId property specified")
-                return
-              if 'NetworkId' not in event['ResourceProperties']:
-                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No NetworkId property specified")
-                return
+              for propertName in ('WorkspaceName', 'CredentialsId', 'StorageId', 'NetworkId'):
+                if checkForMissingProperty(event['ResourceProperties'], propertName): return
               postData = {
                 "workspace_name": event['ResourceProperties']['WorkspaceName'],
                 "aws_region": "${AWS::Region}",
@@ -813,7 +801,16 @@ Resources:
                 except: errorMessage = response.reason
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                 return
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, str(json.loads(response.data.decode())['workspace_id']))
+              workspaceId = str(json.loads(response.data.decode())['workspace_id'])
+              while True:
+                time.sleep(5)
+                try:
+                  response = http.request('GET', accountsAPIBaseURL + '/workspaces/' + workspaceId, headers=myHeaders)
+                  if json.loads(response.data.decode())['workspace_status'] != 'PROVISIONING': break
+                except Exception as e:
+                  print(str(e))
+                  break
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, workspaceId)
               return
             if event['RequestType'] == 'Delete':
               response = http.request('DELETE', accountsAPIBaseURL + '/workspaces/' + event['PhysicalResourceId'], headers=myHeaders)
@@ -865,6 +862,24 @@ Outputs:
     Value: !GetAtt StorageConfigurationFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-StorageConfigurationFn-Arn
+
+  BackendVpcEnpointFnArn:
+    Description: The ARN of the CFN function creating a backend VPC endpoint
+    Value: !GetAtt BackendVpcEnpointFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-BackendVpcEnpointFn-Arn
+
+  WorkspaceVpcEnpointFnArn:
+    Description: The ARN of the CFN function creating a workspace VPC endpoint
+    Value: !GetAtt WorkspaceVpcEnpointFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-WorkspaceVpcEnpointFn-Arn
+
+  PrivateAccessConfigurationFnArn:
+    Description: The ARN of the CFN function creating a Databricks private access settings object
+    Value: !GetAtt PrivateAccessConfigurationFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-PrivateAccessConfigurationFn-Arn
 
   NetworkConfigurationFnArn:
     Description: The ARN of the CFN function creating a Databricks network configuration object
