@@ -461,37 +461,11 @@ Resources:
         - !Ref DBSPrivateSubnet1
         - !Ref DBSPrivateSubnet2
 
-  # The RDS endpoint
-  RDSInterfaceEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties: 
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.rds
-      VpcEndpointType: Interface
-      VpcId: !Ref DBSVpc
-      PrivateDnsEnabled: true
-      SecurityGroupIds: 
-        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
-      SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
-
-  # The Kinesis endpoints
+  # The Kinesis endpoint
   KinesisInterfaceEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties: 
       ServiceName: !Sub com.amazonaws.${AWS::Region}.kinesis-streams
-      VpcEndpointType: Interface
-      VpcId: !Ref DBSVpc
-      PrivateDnsEnabled: true
-      SecurityGroupIds: 
-        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
-      SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
-  KinesisFirehoseInterfaceEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties: 
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.kinesis-firehose
       VpcEndpointType: Interface
       VpcId: !Ref DBSVpc
       PrivateDnsEnabled: true
