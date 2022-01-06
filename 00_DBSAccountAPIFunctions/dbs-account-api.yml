@@ -68,7 +68,6 @@ Mappings:
 #-------------------------------------------------------------------------
 Resources:
 
-  #-----------------------------------
   # Role for functions
   BaseLambdaRole:
     Condition: CreateRoleForLambda
@@ -85,29 +84,72 @@ Resources:
               - lambda.amazonaws.com
             Action:
               - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: !Sub ${AWS::StackName}-CustomResourceFunctionRolePolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: AllowVPCEndpointManagement
+              - Sid: AllowWritingToLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - arn:aws:logs:*:*:log-group:/aws/lambda/*:log-stream:*
+              - Sid: AllowEndpointCreation
+                Effect: Allow
+                Action: ec2:CreateVpcEndpoint
+                Resource:
+                  - arn:aws:ec2:*:*:vpc/*
+                  - arn:aws:ec2:*:*:security-group/*
+                  - arn:aws:ec2:*:*:subnet/*
+              - Sid: RestrictEndpointCreation
                 Effect: Allow
                 Action:
                   - ec2:CreateVpcEndpoint
-                  - ec2:ModifyVpcEndpoint
-                  - ec2:DescribeVpcEndpoints
+                  - ec2:CreateTags
                   - ec2:DeleteVpcEndpoints
+                Resource: 'arn:aws:ec2:*:*:vpc-endpoint/*'
+                Condition:
+                  "StringEquals":
+                    "ec2:VpceServiceName":
+                      - com.amazonaws.vpce.us-east-1.vpce-svc-09143d1e626de2f04
+                      - com.amazonaws.vpce.us-east-1.vpce-svc-00018a8c3ff62ffdf
+                      - com.amazonaws.vpce.us-east-2.vpce-svc-041dc2b4d7796b8d3
+                      - com.amazonaws.vpce.us-east-2.vpce-svc-090a8fab0d73e39a6
+                      - com.amazonaws.vpce.us-west-2.vpce-svc-0129f463fcfbc46c5
+                      - com.amazonaws.vpce.us-west-2.vpce-svc-0158114c0c730c3bb
+                      - com.amazonaws.vpce.eu-west-1.vpce-svc-0da6ebf1461278016
+                      - com.amazonaws.vpce.eu-west-1.vpce-svc-09b4eb2bc775f4e8c
+                      - com.amazonaws.vpce.eu-west-2.vpce-svc-01148c7cdc1d1326c
+                      - com.amazonaws.vpce.eu-west-2.vpce-svc-05279412bf5353a45
+                      - com.amazonaws.vpce.eu-central-1.vpce-svc-081f78503812597f7
+                      - com.amazonaws.vpce.eu-central-1.vpce-svc-08e5dfca9572c85c4
+                      - com.amazonaws.vpce.ap-southeast-1.vpce-svc-02535b257fc253ff4
+                      - com.amazonaws.vpce.ap-southeast-1.vpce-svc-0557367c6fc1a0c5c
+                      - com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b87155ddd6954974
+                      - com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b4a72e8f825495f6
+                      - com.amazonaws.vpce.ap-northeast-1.vpce-svc-02691fd610d24fd64
+                      - com.amazonaws.vpce.ap-northeast-1.vpce-svc-02aa633bda3edbec0
+                      - com.amazonaws.vpce.ap-south-1.vpce-svc-0dbfe5d9ee18d6411
+                      - com.amazonaws.vpce.ap-south-1.vpce-svc-03fd4d9b61414f3de
+                      - com.amazonaws.vpce.ca-central-1.vpce-svc-0205f197ec0e28d65
+                      - com.amazonaws.vpce.ca-central-1.vpce-svc-0c4e25bdbcbfbb684
+              - Sid: AllowEndpointModification
+                Effect: Allow
+                Action: ec2:ModifyVpcEndpoint
+                Resource:
+                  - arn:aws:ec2:*:*:vpc-endpoint/*
+              - Sid: AllowEndpointDescribe
+                Effect: Allow
+                Action: ec2:DescribeVpcEndpoints
                 Resource: '*'
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
 
-  #-----------------------------------
   # Credentials configuration
-
-  # The custom resource function
   CredentialsConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -120,9 +162,7 @@ Resources:
       Timeout: 25
       Code:
         ZipFile: |
-          import cfnresponse
-          import urllib3
-          import json
+          import cfnresponse, urllib3, json
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -161,8 +201,6 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-  
-  # The log group on CloudWatch logs
   CredentialsConfigurationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -180,11 +218,7 @@ Resources:
   #     CredentialsName: String - The human-friendly name of the credentials object
   #     CrossAccountRoleArn: String - The ARN of the cross-account role used by Databricks to deploy resources
 
-
-  #-----------------------------------
   # Storage configuration
-
-  # The custom resource function
   StorageConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -197,9 +231,7 @@ Resources:
       Timeout: 25
       Code:
         ZipFile: |
-          import cfnresponse
-          import urllib3
-          import json
+          import cfnresponse, urllib3, json
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -238,8 +270,6 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-
-  # The log group on CloudWatch logs
   StorageConfigurationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -257,11 +287,7 @@ Resources:
   #     StorageName: String - The human-friendly name of the storage object
   #     RootBucket: String - The name of the Databricks root S3 bucket
 
-
-  #-----------------------------------
   ### The VPC Endpoint for the workspace (Databricks Private Link)
-
-  # The custom resource function
   WorkspaceVpcEnpointFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -347,8 +373,6 @@ Resources:
                   except Exception as e: print(str(e))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
           - { ServiceName: !FindInMap [PrivateLink, !Ref AWS::Region, workspace] }
-
-  # The log group on CloudWatch logs
   WorkspaceVpcEnpointLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -372,10 +396,7 @@ Resources:
   #       - String - The AWS Id of a security group attached to the created Databricks resources
 
 
-  #-----------------------------------
   ### The VPC Endpoint for the backend (Databricks Private Link)
-
-  # The custom resource function
   BackendVpcEnpointFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -461,8 +482,6 @@ Resources:
                   except Exception as e: print(str(e))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
           - { ServiceName: !FindInMap [PrivateLink, !Ref AWS::Region, backend] }
-
-  # The log group on CloudWatch logs
   BackendVpcEnpointLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -485,10 +504,7 @@ Resources:
   #     SecurityGroups:
   #       - String - The AWS Id of a security group attached to the created Databricks resources
 
-  #-----------------------------------
   ### The network configuration
-
-  # The custom resource function
   NetworkConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -501,9 +517,7 @@ Resources:
       Timeout: 25
       Code:
         ZipFile: |
-          import cfnresponse
-          import urllib3
-          import json
+          import cfnresponse, urllib3, json
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -559,8 +573,6 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-
-  # The log group on CloudWatch logs
   NetworkConfigurationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -588,8 +600,6 @@ Resources:
 
 
   ### The private access configuration
-
-  # The custom resource function
   PrivateAccessConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -602,9 +612,7 @@ Resources:
       Timeout: 25
       Code:
         ZipFile: !Sub |
-          import cfnresponse
-          import urllib3
-          import json
+          import cfnresponse, urllib3, json
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -652,8 +660,6 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-
-  # The log group on CloudWatch logs
   PrivateAccessConfigurationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -674,10 +680,7 @@ Resources:
   #       - !Ref WorkspaceVpcEnpoint
 
 
-  #-----------------------------------
   ### The managed keys configuration
-
-  # The custom resource function
   ManagedKeysConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -690,9 +693,7 @@ Resources:
       Timeout: 25
       Code:
         ZipFile: |
-          import cfnresponse
-          import urllib3
-          import json
+          import cfnresponse, urllib3, json
           def checkForMissingProperty(properties, propertyName):
             if propertyName not in properties:
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -739,8 +740,6 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-
-  # The log group on CloudWatch logs
   ManagedKeysConfigurationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -763,10 +762,7 @@ Resources:
   #       - STORAGE
 
 
-  #-----------------------------------
   ### The workspace object
-
-  # The custom resource function
   WorkspaceFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -836,8 +832,6 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-
-  # The log group on CloudWatch logs
   WorkspaceLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -859,7 +853,6 @@ Resources:
   #     ManagedServicesKeyId: !Ref KeysConfiguration
   #     StorageKeyId: !Ref KeysConfiguration
   #     PrivateAccessId: !Ref PrivateAccessConfiguration
-
 
 #-------------------------------------------------------------------------
 Outputs:
