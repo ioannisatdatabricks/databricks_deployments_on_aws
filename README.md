@@ -10,4 +10,7 @@ The folder 01_BaselineArchitecture contains a Cloudformation template which:
 - Creates the relevant configuration objects in a Databricks account as well as a workspace.
 
 ## Setting up a cross-region replicated S3 bucket
-The folder CrossRegionReplicatedBucket contains instructions, scripts and a Cloudformation template in order to create two S3 buckets in different regions, which are cross-replicated, in order to accommodate the use case of a customer with data in a region where the Databricks E2 deployment is not available
+The folder 02_CrossRegionReplicatedBucket contains instructions, scripts and a Cloudformation template in order to create two S3 buckets in different regions, which are cross-replicated, in order to accommodate the use case of a customer with data in a region where the Databricks E2 deployment is not available
+
+## Accessing a remote S3 bucket using VPC peering
+The folder 02_VpcPeering contains instructions, scripts and a Cloudformation template that demonstrates how one can access through Databricks an S3 bucket which is located in a remote region by using VPC peering.
