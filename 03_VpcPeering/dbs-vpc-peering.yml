@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Deployed the resources for a Databricks Workspace in a baseline architecture
+Description: Deploys peered VPCs
 
 #-------------------------------------------------------------------------
 Parameters:
@@ -8,49 +8,100 @@ Parameters:
     Description: The value of the Owner tag in the created resources
     Type: String
 
-  DBSRootBucketName:
-    Description: The name of the bucket holding the Databricks workspace data
+  SourceRegion:
+    Description: The source region, where no E2 workspace deployment is available
     Type: String
-    AllowedPattern: '(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)'
-    ConstraintDescription: 3 to 63 characters; must contain only lowercase letters, numbers, periods (.), and dashes (-)
+    AllowedValues:
+      - sa-east-1
+      - eu-north-1
+      - eu-west-3
+      - eu-south-1
+      - me-south-1
+      - af-south-1
+      - ap-east-1
+      - ap-northeast-3
+      - ap-southeast-3
+    ConstraintDescription: AWS regions without E2 Workspace deployment
+    Default: eu-west-3
+
+  WorkspaceRegion:
+    Description: The region where a Databricks Workspace can be deployed
+    Type: String
+    AllowedValues:
+      - us-east-1
+      - us-east-2
+      - us-west-1
+      - us-west-2
+      - ca-central-1
+      - eu-west-1
+      - eu-west-2
+      - eu-central-1
+      - ap-northeast-1
+      - ap-southeast-1
+      - ap-southeast-2
+      - ap-south-1
+    ConstraintDescription: AWS regions with E2 Workspace deployment
+    Default: eu-west-1
 
   DBSVPCCidrBlock:
     Description: The CIDR block of the VPC for the Databricks data plane
     Type: String
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[6-9]|2[0-3])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-23
+    Default: 10.30.0.0/16
   
-  DBSPublicSubnet1CidrBlock:
-    Description: The CIDR block of the first public subnet for the Databricks data plane
+  DBSPublicSubnetCidrBlock:
+    Description: The CIDR block of the public subnet for the Databricks data plane
     Type: String
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
-  
-  DBSPublicSubnet2CidrBlock:
-    Description: The CIDR block of the second public subnet for the Databricks data plane. Specify only for high availability of internet access
-    Type: String
-    Default: ""
+    Default: 10.30.0.0/24
   
   DBSPrivateSubnet1CidrBlock:
     Description: The CIDR block of the first private subnet for the Databricks data plane
     Type: String
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+    Default: 10.30.4.0/22
   
   DBSPrivateSubnet2CidrBlock:
     Description: The CIDR block of the second private subnet for the Databricks data plane
     Type: String
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+    Default: 10.30.8.0/22
 
-  DBSPrivateLinkMode:
-    Description: The Private Link setup mode for the Databricks workspace
+  SrcVPCCidrBlock:
+    Description: The CIDR block of the VPC in the source region
     Type: String
-    AllowedValues:
-      - "Off"
-      - "PublicAccessEnabled"
-      - "PublicAccessDisabled"
-    Default: "Off"
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[6-9]|2[0-3])$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-23
+    Default: 10.31.0.0/16
+  
+  SrcPrivateSubnet1CidrBlock:
+    Description: The CIDR block of the first private subnet  in the source region
+    Type: String
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+    Default: 10.31.4.0/22
+
+  SrcPrivateSubnet2CidrBlock:
+    Description: The CIDR block of the second private subnet  in the source region
+    Type: String
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+    Default: 10.31.8.0/22
+
+  ExistingBucketInSourceRegion:
+    Description: The name of an existing bucket in the source region holding data
+    Type: String
+    Default: ""
+
+  DBSRootBucketName:
+    Description: The name of the bucket holding the Databricks workspace data
+    Type: String
+    AllowedPattern: '(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)'
+    ConstraintDescription: 3 to 63 characters; must contain only lowercase letters, numbers, periods (.), and dashes (-)
 
   DBSEncryptionKeyArn:
     Description: The existing ARN of the KMS key used for the encryption/decryption of Databricks notebooks
@@ -85,32 +136,52 @@ Parameters:
     Type: String
     NoEcho: true
 
+  PeerVpcId:
+    Description: The Id of the peer VPC
+    Type: String
+    Default: ""
+
+  VpcPeerConnectionId:
+    Description: The Id of the VPC connection
+    Type: String
+    Default: ""
+
 #-------------------------------------------------------------------------
 Conditions:
 
-  HighAvailabilityForInternet:
-    !Not [ !Equals [!Ref DBSPublicSubnet2CidrBlock, ""] ]
+  IsSourceRegion:
+    !Equals [!Ref AWS::Region, !Ref SourceRegion]
+
+  IsWorkspaceRegion:
+    !Equals [!Ref AWS::Region, !Ref WorkspaceRegion]
+
+  UpdateRouteTablesForVpcPeerConnectivity:
+    !Or [!Equals [!Ref AWS::Region, !Ref SourceRegion], !Not [!Equals [!Ref VpcPeerConnectionId, "" ] ] ]  
+
+  UpdatePublicRouteTablesForVpcPeerConnectivity:
+    !And [!Equals [!Ref AWS::Region, !Ref WorkspaceRegion], !Not [!Equals [!Ref VpcPeerConnectionId, "" ] ] ]
 
   CreateEncryptionKey:
-    !Equals [!Ref DBSEncryptionKeyArn, ""]
+    !And [!Equals [!Ref DBSEncryptionKeyArn, ""], !Equals [!Ref AWS::Region, !Ref WorkspaceRegion] ]
 
   CreateInstanceProfile:
-    !Equals [!Ref DBSInstanceProfileArn, ""]
+    !And [!Equals [!Ref DBSInstanceProfileArn, ""], !Equals [!Ref AWS::Region, !Ref WorkspaceRegion] ]
 
   CreateCrossAccountRole:
-    !Equals [!Ref DBSCrossAccountRoleArn, ""]
+    !And [!Equals [!Ref DBSCrossAccountRoleArn, ""], !Equals [!Ref AWS::Region, !Ref WorkspaceRegion] ]
 
-  EnablePrivateLink:
-    !Not [ !Equals [!Ref DBSPrivateLinkMode, "Off"] ]
-  
-  PublicAccessForPrivateLink:
-    !Equals [!Ref DBSPrivateLinkMode, "PublicAccessEnabled"]
+  CreateDatabricksWorkspace:
+    !And [!Equals [!Ref AWS::Region, !Ref WorkspaceRegion], !Not [!Equals [!Ref VpcPeerConnectionId, "" ] ] ]
+
+  ExistsBucketInSourceRegion:
+    !And [!Equals [!Ref AWS::Region, !Ref SourceRegion], !Not [!Equals [!Ref ExistingBucketInSourceRegion, ""] ] ]
 
 #-------------------------------------------------------------------------
 Resources:
 
   # The root bucket
   DBSRootBucket:
+    Condition: IsWorkspaceRegion
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref DBSRootBucketName
@@ -129,6 +200,7 @@ Resources:
           Value: !Ref ResourceOwner
   
   DBSRootBucketPolicy:
+    Condition: IsWorkspaceRegion
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref DBSRootBucket
@@ -149,11 +221,12 @@ Resources:
               - !Sub arn:aws:s3:::${DBSRootBucketName}
               - !Sub arn:aws:s3:::${DBSRootBucketName}/*
 
+
   # The VPC
-  DBSVpc:
+  Vpc:
     Type: AWS::EC2::VPC
     Properties: 
-      CidrBlock: !Ref DBSVPCCidrBlock
+      CidrBlock: !If [IsWorkspaceRegion, !Ref DBSVPCCidrBlock, !Ref SrcVPCCidrBlock]
       EnableDnsHostnames: true
       EnableDnsSupport: true
       Tags:
@@ -163,9 +236,10 @@ Resources:
           Value: !Sub ${AWS::StackName}-DatabricksVPC
   
   # Internet gateway
-  DBSVpcIgw:
+  VpcIgw:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::InternetGateway
-    DependsOn: DBSVpc
+    DependsOn: Vpc
     Properties:
       Tags:
         - Key: Owner
@@ -173,45 +247,34 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-DatabricksVpcIgw
   #... attached to the VPC
-  DBSVpcIgwAttachment:
+  VpcIgwAttachment:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      InternetGatewayId: !GetAtt DBSVpcIgw.InternetGatewayId
-      VpcId: !Ref DBSVpc
+      InternetGatewayId: !GetAtt VpcIgw.InternetGatewayId
+      VpcId: !Ref Vpc
   
-  # The subnets for the public resources, such as the NAT Gateway
-  DBSPublicSubnet1:
+  # The subnet for the public resources, such as the NAT Gateway
+  PublicSubnet:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::Subnet
     Properties: 
-      VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPublicSubnet1CidrBlock
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref DBSPublicSubnetCidrBlock
       AvailabilityZone: !Select [0, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPublicSubnet1
-  DBSPublicSubnet2:
-    Condition: HighAvailabilityForInternet
-    Type: AWS::EC2::Subnet
-    Properties: 
-      VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPublicSubnet2CidrBlock
-      AvailabilityZone: !Select [1, !GetAZs ""]
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPublicSubnet2
+          Value: !Sub ${AWS::StackName}-DatabricksPublicSubnet
 
   # The two private subnets
-  DBSPrivateSubnet1:
+  PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties: 
-      VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPrivateSubnet1CidrBlock
+      VpcId: !Ref Vpc
+      CidrBlock: !If [IsWorkspaceRegion, !Ref DBSPrivateSubnet1CidrBlock, !Ref SrcPrivateSubnet1CidrBlock]
       AvailabilityZone: !Select [0, !GetAZs ""]
       MapPublicIpOnLaunch: false
       Tags:
@@ -219,11 +282,11 @@ Resources:
           Value: !Ref ResourceOwner
         - Key: Name
           Value: !Sub ${AWS::StackName}-DatabricksPrivateSubnet1
-  DBSPrivateSubnet2:
+  PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties: 
-      VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPrivateSubnet2CidrBlock
+      VpcId: !Ref Vpc
+      CidrBlock: !If [IsWorkspaceRegion, !Ref DBSPrivateSubnet2CidrBlock, !Ref SrcPrivateSubnet2CidrBlock]
       AvailabilityZone: !Select [1, !GetAZs ""]
       MapPublicIpOnLaunch: false
       Tags:
@@ -232,8 +295,9 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-DatabricksPrivateSubnet2
 
-  # The Elastic IP and the NAT Gateway 1
-  ElasticIPForNat1:
+  # The Elastic IP and the NAT Gateway
+  ElasticIPForNat:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::EIP
     Properties: 
       Domain: vpc
@@ -241,48 +305,26 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat1ElasticIP
-  DBSNat1:
+          Value: !Sub ${AWS::StackName}-DatabricksNatElasticIP
+  Nat:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::NatGateway
     Properties: 
-      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
+      AllocationId: !GetAtt ElasticIPForNat.AllocationId
       ConnectivityType: public
-      SubnetId: !Ref DBSPublicSubnet1
+      SubnetId: !Ref PublicSubnet
       Tags: 
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat1
+          Value: !Sub ${AWS::StackName}-DatabricksNat
 
-  #The Elastic IP and the NAT Gateway 2
-  ElasticIPForNat2:
-    Condition: HighAvailabilityForInternet
-    Type: AWS::EC2::EIP
-    Properties: 
-      Domain: vpc
-      Tags: 
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat2ElasticIP
-  DBSNat2:
-    Condition: HighAvailabilityForInternet
-    Type: AWS::EC2::NatGateway
-    Properties: 
-      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
-      ConnectivityType: public
-      SubnetId: !Ref DBSPublicSubnet2
-      Tags: 
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat2
-
-  # The route table attached to the public subnets
-  DBSPublicRouteTable:
+  # The route table attached to the public subnet
+  PublicRouteTable:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::RouteTable
     Properties: 
-      VpcId: !Ref DBSVpc
+      VpcId: !Ref Vpc
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -290,204 +332,231 @@ Resources:
           Value: !Sub ${AWS::StackName}-DatabricksPublicRouteTable
   # Route to the internet
   RouteToInternetInPublicRouteTable:
-    DependsOn: DBSVpcIgwAttachment
+    Condition: IsWorkspaceRegion
+    DependsOn: VpcIgwAttachment
     Type: AWS::EC2::Route
     Properties: 
-      RouteTableId: !Ref DBSPublicRouteTable
+      RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref DBSVpcIgw
+      GatewayId: !Ref VpcIgw
   # Associate the route table to the subnets
-  PublicSubnet1RouteTableAssociation:
+  PublicSubnetRouteTableAssociation:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties: 
-      RouteTableId: !Ref DBSPublicRouteTable
-      SubnetId: !Ref DBSPublicSubnet1
-  PublicSubnet2RouteTableAssociation:
-    Condition: HighAvailabilityForInternet
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties: 
-      RouteTableId: !Ref DBSPublicRouteTable
-      SubnetId: !Ref DBSPublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
 
-  # The route table for the private subnet 1
-  DBSPrivateRouteTable1:
+  # The route table for the private subnets
+  PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref DBSVpc
+      VpcId: !Ref Vpc
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable1
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable
   # Route to the internet
-  RouteToInternetInPrivateRouteTable1:
+  RouteToInternetInPrivateRouteTable:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable1
+      RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref DBSNat1
+      NatGatewayId: !Ref Nat
   # Associate the route table to the subnets
   PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable1
-      SubnetId: !Ref DBSPrivateSubnet1
-
-  # The route table for the private subnet 2
-  DBSPrivateRouteTable2:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref DBSVpc
-      Tags:
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: DatabricksPrivateRouteTable2
-  # Route to the internet
-  RouteToInternetInPrivateRouteTable2:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable2
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !If [ HighAvailabilityForInternet, !Ref DBSNat2, !Ref DBSNat1 ]
-  # Associate the route table to the subnets
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1
   PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable2
-      SubnetId: !Ref DBSPrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2
 
   # The S3 gateway endpoint
   S3GatewayEndpoint:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::VPCEndpoint
     Properties:
       ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
       VpcEndpointType: Gateway
-      VpcId: !Ref DBSVpc
+      VpcId: !Ref Vpc
       RouteTableIds:
-        - !Ref DBSPublicRouteTable
-        - !Ref DBSPrivateRouteTable1
-        - !Ref DBSPrivateRouteTable2
+        - !Ref PublicRouteTable
+        - !Ref PrivateRouteTable
 
   # The security group for the workspace
-  DBSWorkspaceSecurityGroup:
+  WorkspaceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties: 
-      GroupName: !Sub ${AWS::StackName}-DBSWorkspaceSG
-      VpcId: !Ref DBSVpc
+      GroupName: !Sub ${AWS::StackName}-WorkspaceSG
+      VpcId: !Ref Vpc
       GroupDescription: Allow access from within the same security group
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DBSWorkspaceSG
+          Value: !Sub ${AWS::StackName}-WorkspaceSG
   # Allow all access from the same security group
-  DBSWorkspaceSecurityGroupDefaultTcpIngress:
+  WorkspaceSecurityGroupDefaultTcpIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties: 
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       Description: Allow all tcp inbound access from the same security group
-      SourceSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SourceSecurityGroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       IpProtocol: tcp
       FromPort: 0
       ToPort: 65535
-  DBSWorkspaceSecurityGroupDefaultUdpIngress:
+  WorkspaceSecurityGroupDefaultUdpIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties: 
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       Description: Allow all udp inbound access from the same security group
-      SourceSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SourceSecurityGroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       IpProtocol: udp
       FromPort: 0
       ToPort: 65535
-  DBSWorkspaceSecurityGroupDefaultTcpEgress:
+  WorkspaceSecurityGroupDefaultTcpEgress:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       Description: Allow all tcp output access from the same security group
-      DestinationSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      DestinationSecurityGroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       IpProtocol: tcp
       FromPort: 0
       ToPort: 65535
-  DBSWorkspaceSecurityGroupDefaultUdpEgress:
+  WorkspaceSecurityGroupDefaultUdpEgress:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       Description: Allow all udp output access from the same security group
-      DestinationSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      DestinationSecurityGroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       IpProtocol: udp
       FromPort: 0
       ToPort: 65535
-  DBSWorkspaceSecurityGroupEgressForHttps:
+  # Allow all access from the peer VPC
+  WorkspaceSecurityGroupTcpIngressFromPeerVpc:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
+      Description: Allow all tcp inbound access from the peer VPC
+      CidrIp: !If [IsSourceRegion, !Ref DBSVPCCidrBlock, !Ref SrcVPCCidrBlock]
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+  WorkspaceSecurityGroupUdpIngressFromPeerVpc:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
+      Description: Allow all udp inbound access from the peer VPC
+      CidrIp: !If [IsSourceRegion, !Ref DBSVPCCidrBlock, !Ref SrcVPCCidrBlock]
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+  WorkspaceSecurityGroupTcpEgressToPeerVpc:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
+      Description: Allow all tcp output access to the peer VPC
+      CidrIp: !If [IsSourceRegion, !Ref DBSVPCCidrBlock, !Ref SrcVPCCidrBlock]
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+  WorkspaceSecurityGroupUdpEgressToPeerVpc:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
+      Description: Allow all udp output access to the peer VPC
+      CidrIp: !If [IsSourceRegion, !Ref DBSVPCCidrBlock, !Ref SrcVPCCidrBlock]
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+  # Allow all outgoing HTTPS access  
+  WorkspaceSecurityGroupEgressForHttps:
+    Condition: IsWorkspaceRegion
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       Description: Allow accessing Databricks infrastructure, cloud data sources, and library repositories
       CidrIp: 0.0.0.0/0
       IpProtocol: tcp
       FromPort: 443
       ToPort: 443
-  DBSWorkspaceSecurityGroupEgressForMetastore:
+  # Allow all outgoing MySQL access  
+  WorkspaceSecurityGroupEgressForMetastore:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      GroupId: !GetAtt WorkspaceSecurityGroup.GroupId
       Description: Allow accessing the Databricks metastore
       CidrIp: 0.0.0.0/0
       IpProtocol: tcp
       FromPort: 3306
       ToPort: 3306
-  DBSWorkspaceSecurityGroupEgressForPrivateLink:
-    Condition: EnablePrivateLink
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
-      Description: Allow accessing the Databricks control plane using private link
-      CidrIp: 0.0.0.0/0
-      IpProtocol: tcp
-      FromPort: 6666
-      ToPort: 6666
+
+  # The S3 endpoint
+  S3InterfaceEndpoint:
+    Condition: IsSourceRegion
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+      PrivateDnsEnabled: false
+      SecurityGroupIds: 
+        - !GetAtt WorkspaceSecurityGroup.GroupId
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
 
   # The STS endpoint
   STSInterfaceEndpoint:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::VPCEndpoint
     Properties: 
       ServiceName: !Sub com.amazonaws.${AWS::Region}.sts
       VpcEndpointType: Interface
-      VpcId: !Ref DBSVpc
+      VpcId: !Ref Vpc
       PrivateDnsEnabled: true
       SecurityGroupIds: 
-        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+        - !GetAtt WorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
 
   # The Kinesis endpoint
   KinesisInterfaceEndpoint:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::VPCEndpoint
     Properties: 
       ServiceName: !Sub com.amazonaws.${AWS::Region}.kinesis-streams
       VpcEndpointType: Interface
-      VpcId: !Ref DBSVpc
+      VpcId: !Ref Vpc
       PrivateDnsEnabled: true
       SecurityGroupIds: 
-        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+        - !GetAtt WorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
 
   # The KMS endpoint
   KMSInterfaceEndpoint:
+    Condition: IsWorkspaceRegion
     Type: AWS::EC2::VPCEndpoint
     Properties: 
       ServiceName: !Sub com.amazonaws.${AWS::Region}.kms
       VpcEndpointType: Interface
-      VpcId: !Ref DBSVpc
+      VpcId: !Ref Vpc
       PrivateDnsEnabled: true
       SecurityGroupIds: 
-        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+        - !GetAtt WorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
 
   # The KMS CMK for the notebook encryption
   EncryptionKey:
@@ -522,6 +591,80 @@ Resources:
     Properties:
       AliasName: !Sub alias/${AWS::StackName}
       TargetKeyId: !Ref EncryptionKey
+
+  # The VPC peer connection
+  PeerVpcConnection:
+    Condition: IsSourceRegion
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties: 
+      PeerOwnerId: !Ref AWS::AccountId
+      PeerRegion: !Ref WorkspaceRegion
+      PeerVpcId: !Ref PeerVpcId
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PeerVpcConnection
+      VpcId: !Ref Vpc
+
+  # The routes to the peering VPC
+  RouteToPeeringVPCInPublicRouteTable:
+    Condition: UpdatePublicRouteTablesForVpcPeerConnectivity
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: !If [IsSourceRegion, !Ref DBSVPCCidrBlock, !Ref SrcVPCCidrBlock]
+      VpcPeeringConnectionId: !If [IsSourceRegion, !Ref PeerVpcConnection, !Ref VpcPeerConnectionId]
+
+  RouteToPeeringVPCInPrivateRouteTable:
+    Condition: UpdateRouteTablesForVpcPeerConnectivity
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: !If [IsSourceRegion, !Ref DBSVPCCidrBlock, !Ref SrcVPCCidrBlock]
+      VpcPeeringConnectionId: !If [IsSourceRegion, !Ref PeerVpcConnection, !Ref VpcPeerConnectionId]
+
+  # The private hosted zone for the s3 endoint
+  PrivateHostedZoneForS3Endoint:
+    Condition: IsSourceRegion
+    DependsOn: PeerVpcConnection
+    Type: AWS::Route53::HostedZone
+    Properties: 
+      Name: !Sub s3.${AWS::Region}.amazonaws.com
+      HostedZoneConfig: 
+        Comment: !Sub Private hosted zone for s3.${AWS::Region}.amazonaws.com
+      VPCs:
+        - VPCId: !Ref PeerVpcId
+          VPCRegion: !Ref WorkspaceRegion
+      HostedZoneTags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The private hosted zone for the s3 endoint
+  RecordSetForPrivateHostedZoneForS3Endoint:
+    Condition: IsSourceRegion
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      Name: !Sub s3.${AWS::Region}.amazonaws.com
+      Type: A
+      AliasTarget: 
+        DNSName: !Select [1, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+        HostedZoneId: !Select [0, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+      Comment: Points to the VPC endpoint
+      HostedZoneId: !Ref PrivateHostedZoneForS3Endoint
+
+  # The private hosted zone for the s3 endoint
+  RecordSetForExistingBucket:
+    Condition: ExistsBucketInSourceRegion
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      Name: !Sub ${ExistingBucketInSourceRegion}.s3.${AWS::Region}.amazonaws.com
+      Type: A
+      AliasTarget: 
+        DNSName: !Select [1, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+        HostedZoneId: !Select [0, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+      Comment: Points to the VPC endpoint
+      HostedZoneId: !Ref PrivateHostedZoneForS3Endoint
 
   # The role for the instance profile for the cluster
   DBSInstanceProfileRole:
@@ -673,16 +816,18 @@ Resources:
                   - ec2:AuthorizeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupEgress
                   - ec2:RevokeSecurityGroupIngress
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${DBSWorkspaceSecurityGroup}
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${WorkspaceSecurityGroup}
                 Condition:
                   "StringEquals":
-                    "ec2:vpc": !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${DBSVpc}
+                    "ec2:vpc": !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${Vpc}
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
 
+
   #------ The Databricks workspace related resources
   DBSCredentialsConfiguration:
+    Condition: CreateDatabricksWorkspace
     Type: Custom::DBSCredentialsConfiguration
     Properties:
       ServiceToken: !ImportValue dbs-account-api-CredentialsConfigurationFn-Arn
@@ -693,6 +838,7 @@ Resources:
       CrossAccountRoleArn: !If [CreateCrossAccountRole, !GetAtt DBSCrossAccountIAMRole.Arn, !Ref DBSCrossAccountRoleArn]
 
   DBSStorageConfiguration:
+    Condition: CreateDatabricksWorkspace
     Type: Custom::DBSStorageConfiguration
     Properties:
       ServiceToken: !ImportValue dbs-account-api-StorageConfigurationFn-Arn
@@ -703,6 +849,7 @@ Resources:
       RootBucket: !Ref DBSRootBucket
 
   DBSManagedKeysConfiguration:
+    Condition: CreateDatabricksWorkspace
     Type: Custom::DBSManagedKeysConfiguration
     Properties:
       ServiceToken: !ImportValue dbs-account-api-ManagedKeysConfigurationFn-Arn
@@ -714,39 +861,8 @@ Resources:
       UseCases:
         - MANAGED_SERVICES
 
-  WorkspaceVpcEnpoint:
-    Condition: EnablePrivateLink
-    Type: Custom::WorkspaceVpcEnpoint
-    Properties:
-      ServiceToken: !ImportValue dbs-account-api-WorkspaceVpcEnpointFn-Arn
-      DatabricksAccountId: !Ref DBSAccountId
-      Username: !Ref DBSUsername
-      Password: !Ref DBSPassword
-      EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
-      VpcId: !Ref DBSVpc
-      Subnets:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
-      SecurityGroups:
-        - !Ref DBSWorkspaceSecurityGroup
-
-  BackendVpcEnpoint:
-    Condition: EnablePrivateLink
-    Type: Custom::BackendVpcEnpoint
-    Properties:
-      ServiceToken: !ImportValue dbs-account-api-BackendVpcEnpointFn-Arn
-      DatabricksAccountId: !Ref DBSAccountId
-      Username: !Ref DBSUsername
-      Password: !Ref DBSPassword
-      EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
-      VpcId: !Ref DBSVpc
-      Subnets:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
-      SecurityGroups:
-        - !Ref DBSWorkspaceSecurityGroup
-
   DBSNetworkConfiguration:
+    Condition: CreateDatabricksWorkspace
     Type: Custom::DBSNetworkConfiguration
     Properties:
       ServiceToken: !ImportValue dbs-account-api-NetworkConfigurationFn-Arn
@@ -754,32 +870,15 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       NetworkName: !Sub ${AWS::StackName}_network
-      VpcId: !Ref DBSVpc
+      VpcId: !Ref Vpc
       Subnets:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
       SecurityGroups:
-        - !Ref DBSWorkspaceSecurityGroup
-      VpcEndpoints: !If
-        - EnablePrivateLink
-        - RestApiEndpointId: !Ref WorkspaceVpcEnpoint
-          DataplaneRelayEndpointId: !Ref BackendVpcEnpoint
-        - !Ref AWS::NoValue
-
-  PrivateAccessConfiguration:
-    Condition: EnablePrivateLink
-    Type: Custom::PrivateAccessConfiguration
-    Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: !Ref DBSAccountId
-      Username: !Ref DBSUsername
-      Password: !Ref DBSPassword
-      PrivateAccessSettingsName:  !Sub ${AWS::StackName}_privateAccessSettings
-      PublicAccessEnabled: !If [ PublicAccessForPrivateLink, true, false ]
-      AllowedVpcEndpoints:
-        - !Ref WorkspaceVpcEnpoint
+        - !Ref WorkspaceSecurityGroup
 
   DatabricksWorkspace:
+    Condition: CreateDatabricksWorkspace
     Type: Custom::DatabricksWorkspace
     Properties:
       ServiceToken: !ImportValue dbs-account-api-WorkspaceFn-Arn
@@ -791,12 +890,20 @@ Resources:
       StorageId: !Ref DBSStorageConfiguration
       NetworkId: !Ref DBSNetworkConfiguration
       ManagedServicesKeyId: !Ref DBSManagedKeysConfiguration
-      PrivateAccessId: !If [ EnablePrivateLink, !Ref PrivateAccessConfiguration, !Ref AWS::NoValue ]
 
 
 #-------------------------------------------------------------------------
 Outputs:
 
+  VpcId:
+    Description: The Id of the created VPC
+    Value: !Ref Vpc
+  
+  PeerVpcConnectionId:
+    Description: The Id of the VPC peering connection
+    Value: !If [IsSourceRegion, !Ref PeerVpcConnection, !Ref VpcPeerConnectionId]
+
   InstanceProfileArn:
-    Description: The ARN of the instance profile for the Databricks cluster
-    Value: !If [ CreateInstanceProfile, !GetAtt DBSInstanceProfile.Arn, !Ref DBSInstanceProfileArn]
+    Condition: CreateInstanceProfile
+    Description: The ARN of the created instance profile
+    Value: !GetAtt DBSInstanceProfile.Arn
