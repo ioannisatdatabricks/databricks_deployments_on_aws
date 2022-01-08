@@ -770,7 +770,7 @@ Resources:
     Condition: EnablePrivateLink
     Type: Custom::PrivateAccessConfiguration
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
+      ServiceToken: !ImportValue dbs-account-api-PrivateAccessConfigurationFn-Arn
       DatabricksAccountId: !Ref DBSAccountId
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword

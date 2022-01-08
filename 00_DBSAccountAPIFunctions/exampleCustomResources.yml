@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Custom resources wrapping the Databricks Account API
+
+Parameters:
+
+  DBSPassword:
+    Description: The Databricks account password
+    Type: String
+    NoEcho: true
+
+Resources:
+
+  CredentialsConfiguration:
+    Type: Custom::CredentialsConfiguration
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      CredentialsName: String - The human-friendly name of the credentials object
+      CrossAccountRoleArn: String - The ARN of the cross-account role used by Databricks to deploy resources
+
+
+  StorageConfiguration:
+    Type: Custom::StorageConfiguration
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      StorageName: String - The human-friendly name of the storage object
+      RootBucket: String - The name of the Databricks root S3 bucket
+
+
+  WorkspaceVpcEnpoint:
+    Type: Custom::WorkspaceVpcEnpoint
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      EndpointName: String - The human-friendly name of the network object
+      VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
+      Subnets:
+        - String - The AWS Id of the first private subnet in the above VPC
+        - String - The AWS Id of the second private subnet in the above VPC
+      SecurityGroups:
+        - String - The AWS Id of a security group attached to the created Databricks resources
+
+
+  BackendVpcEnpoint:
+    Type: Custom::BackendVpcEnpoint
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      EndpointName: String - The human-friendly name of the network object
+      VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
+      Subnets:
+        - String - The AWS Id of the first private subnet in the above VPC
+        - String - The AWS Id of the second private subnet in the above VPC
+      SecurityGroups:
+        - String - The AWS Id of a security group attached to the created Databricks resources
+
+
+  NetworkConfiguration:
+    Type: Custom::NetworkConfiguration
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      NetworkName: String - The human-friendly name of the network object
+      VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
+      Subnets:
+        - String - The AWS Id of the first private subnet in the above VPC
+        - String - The AWS Id of the second private subnet in the above VPC
+      SecurityGroups:
+        - String - The AWS Id of a security group attached to the created Databricks resources
+      VpcEndpoints:
+        RestApiEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the Rest API
+        DataplaneRelayEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the secure cluster relay
+
+
+  PrivateAccessConfiguration:
+    Type: Custom::PrivateAccessConfiguration
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      PrivateAccessSettingsName: String - The human-friendly name of the private access setings object
+      PublicAccessEnabled: Boolean - A flag indicating whether the workspace is accessible from the public internet
+      AllowedVpcEndpoints:
+        - !Ref WorkspaceVpcEnpoint
+
+
+  ManagedKeysConfiguration:
+    Type: Custom::ManagedKeysConfiguration
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      KeyArn: String - The ARN of the KMS key used by Databricks for encrypting customer assets in the control and data planes
+      KeyAlias: String - The alias of the KMS key used by Databricks for encrypting customer assets in the control and data planes
+      ReuseKeyForClusterVolumes: Boolean - A flag indicating whether the attached EBS volumes of the Databricks clusters will be encrypted as well
+      UseCases:
+        - MANAGED_SERVICES
+        - STORAGE
+
+
+  DatabricksWorkspace:
+    Type: Custom::DatabricksWorkspace
+    Properties:
+      ServiceToken: String - The ARN of the above Lambda function
+      DatabricksAccountId: String - The Databricks account id
+      Username: String - The Databricks user name
+      Password: !Ref DBSPassword
+      WorkspaceName: String - The human-friendly name of the workspace object
+      CredentialsId: !Ref CredentialsConfiguration
+      StorageId: !Ref StorageConfiguration
+      NetworkId: !Ref NetworkConfiguration
+      ManagedServicesKeyId: !Ref ManagedKeysConfiguration
+      StorageKeyId: !Ref ManagedKeysConfiguration
+      PrivateAccessId: !Ref PrivateAccessConfiguration

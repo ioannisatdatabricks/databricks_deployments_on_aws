@@ -141,13 +141,24 @@ Resources:
                 Action: ec2:ModifyVpcEndpoint
                 Resource:
                   - arn:aws:ec2:*:*:vpc-endpoint/*
-              - Sid: AllowEndpointDescribe
+              - Sid: AllowDescribes
                 Effect: Allow
-                Action: ec2:DescribeVpcEndpoints
+                Action:
+                  - ec2:DescribeVpcEndpoints
+                  - ec2:DescribeVpcs
                 Resource: '*'
+              - Sid: AllowVPCAssociationWithHostedZone
+                Effect: Allow
+                Action:
+                  - route53:AssociateVPCWithHostedZone
+                  - route53:DisassociateVPCFromHostedZone
+                Resource:
+                  - arn:aws:route53:::hostedzone/*
+                  - arn:aws:ec2:*:*:vpc/*
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
+
 
   # Credentials configuration
   CredentialsConfigurationFn:
@@ -206,17 +217,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${CredentialsConfigurationFn}
       RetentionInDays: 365
-  
-  # Example custom resource
-  # CredentialsConfiguration:
-  #   Type: Custom::CredentialsConfiguration
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     CredentialsName: String - The human-friendly name of the credentials object
-  #     CrossAccountRoleArn: String - The ARN of the cross-account role used by Databricks to deploy resources
+
 
   # Storage configuration
   StorageConfigurationFn:
@@ -276,16 +277,6 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${StorageConfigurationFn}
       RetentionInDays: 365
 
-  # Example custom resource
-  # StorageConfiguration:
-  #   Type: Custom::StorageConfiguration
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     StorageName: String - The human-friendly name of the storage object
-  #     RootBucket: String - The name of the Databricks root S3 bucket
 
   ### The VPC Endpoint for the workspace (Databricks Private Link)
   WorkspaceVpcEnpointFn:
@@ -354,7 +345,14 @@ Resources:
                   return
                 dbsVpcEndpointId = json.loads(response.data.decode())['vpc_endpoint_id']
                 waitForEndpoint(vpcEndpointId)
-                ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
+                try:
+                  ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
+                except Exception as e:
+                  print(e)
+                  try: ec2Client.delete_vpc_endpoints(VpcEndpointIds = [vpcEndpointId])
+                  except: pass
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
+                  return
                 waitForEndpoint(vpcEndpointId)
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
                 return
@@ -378,22 +376,6 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${WorkspaceVpcEnpointFn}
       RetentionInDays: 365
-
-  # Example custom resource
-  # WorkspaceVpcEnpoint:
-  #   Type: Custom::WorkspaceVpcEnpoint
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     EndpointName: String - The human-friendly name of the network object
-  #     VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
-  #     Subnets:
-  #       - String - The AWS Id of the first private subnet in the above VPC
-  #       - String - The AWS Id of the second private subnet in the above VPC
-  #     SecurityGroups:
-  #       - String - The AWS Id of a security group attached to the created Databricks resources
 
 
   ### The VPC Endpoint for the backend (Databricks Private Link)
@@ -463,7 +445,14 @@ Resources:
                   return
                 dbsVpcEndpointId = json.loads(response.data.decode())['vpc_endpoint_id']
                 waitForEndpoint(vpcEndpointId)
-                ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
+                try:
+                  ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
+                except Exception as e:
+                  print(e)
+                  try: ec2Client.delete_vpc_endpoints(VpcEndpointIds = [vpcEndpointId])
+                  except: pass
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
+                  return
                 waitForEndpoint(vpcEndpointId)
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
                 return
@@ -488,21 +477,6 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${BackendVpcEnpointFn}
       RetentionInDays: 365
 
-  # Example custom resource
-  # BackendVpcEnpoint:
-  #   Type: Custom::BackendVpcEnpoint
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     EndpointName: String - The human-friendly name of the network object
-  #     VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
-  #     Subnets:
-  #       - String - The AWS Id of the first private subnet in the above VPC
-  #       - String - The AWS Id of the second private subnet in the above VPC
-  #     SecurityGroups:
-  #       - String - The AWS Id of a security group attached to the created Databricks resources
 
   ### The network configuration
   NetworkConfigurationFn:
@@ -579,25 +553,6 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${NetworkConfigurationFn}
       RetentionInDays: 365
 
-  # Example custom resource
-  # NetworkConfiguration:
-  #   Type: Custom::NetworkConfiguration
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     NetworkName: String - The human-friendly name of the network object
-  #     VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
-  #     Subnets:
-  #       - String - The AWS Id of the first private subnet in the above VPC
-  #       - String - The AWS Id of the second private subnet in the above VPC
-  #     SecurityGroups:
-  #       - String - The AWS Id of a security group attached to the created Databricks resources
-  #     VpcEndpoints:
-  #       RestApiEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the Rest API
-  #       DataplaneRelayEndpointId: String - The Databricks Id of the VPC endpoint (Private Link) for the secure cluster relay
-
 
   ### The private access configuration
   PrivateAccessConfigurationFn:
@@ -666,19 +621,6 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${PrivateAccessConfigurationFn}
       RetentionInDays: 365
 
-  # Example custom resource
-  # PrivateAccessConfiguration:
-  #   Type: Custom::PrivateAccessConfiguration
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     PrivateAccessSettingsName: String - The human-friendly name of the private access setings object
-  #     PublicAccessEnabled: Boolean - A flag indicating whether the workspace is accessible from the public internet
-  #     AllowedVpcEndpoints:
-  #       - !Ref WorkspaceVpcEnpoint
-
 
   ### The managed keys configuration
   ManagedKeysConfigurationFn:
@@ -745,21 +687,6 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${ManagedKeysConfigurationFn}
       RetentionInDays: 365
-
-  # Example custom resource
-  # ManagedKeysConfiguration:
-  #   Type: Custom::ManagedKeysConfiguration
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     KeyArn: String - The ARN of the KMS key used by Databricks for encrypting customer assets in the control and data planes
-  #     KeyAlias: String - The alias of the KMS key used by Databricks for encrypting customer assets in the control and data planes
-  #     ReuseKeyForClusterVolumes: Boolean - A flag indicating whether the attached EBS volumes of the Databricks clusters will be encrypted as well
-  #     UseCases:
-  #       - MANAGED_SERVICES
-  #       - STORAGE
 
 
   ### The workspace object
@@ -838,21 +765,6 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${WorkspaceFn}
       RetentionInDays: 365
 
-  # Example custom resource
-  # DatabricksWorkspace:
-  #   Type: Custom::DatabricksWorkspace
-  #   Properties:
-  #     ServiceToken: String - The ARN of the above Lambda function
-  #     DatabricksAccountId: String - The Databricks account id
-  #     Username: String - The Databricks user name
-  #     Password: (Hidden) String - The Databricks password
-  #     WorkspaceName: String - The human-friendly name of the workspace object
-  #     CredentialsId: !Ref CredentialsConfiguration
-  #     StorageId: !Ref StorageConfiguration
-  #     NetworkId: !Ref NetworkConfiguration
-  #     ManagedServicesKeyId: !Ref KeysConfiguration
-  #     StorageKeyId: !Ref KeysConfiguration
-  #     PrivateAccessId: !Ref PrivateAccessConfiguration
 
 #-------------------------------------------------------------------------
 Outputs:
