@@ -357,19 +357,29 @@ Resources:
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
                 return
               if event['RequestType'] == 'Delete':
-                response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
+                response = http.request('GET', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
                 if response.status != 200:
                   errorMessage = 'Unknown Error'
                   try: errorMessage = json.loads(response.data.decode())['message']
                   except: errorMessage = response.reason
                   print(errorMessage)
-                else:
-                  try:
-                    awsVpcEndpointId = json.loads(response.data.decode())['aws_vpc_endpoint_id']
-                    ec2Client.delete_vpc_endpoints(VpcEndpointIds = [awsVpcEndpointId])
-                    waitForEndpointDeletion(awsVpcEndpointId)
-                  except Exception as e: print(str(e))
-                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                  return
+                endpointData = json.loads(response.data.decode())
+                vpc_endpoint_id = endpointData['vpc_endpoint_id']
+                aws_vpc_endpoint_id = endpointData['aws_vpc_endpoint_id']
+                try:
+                  ec2Client.delete_vpc_endpoints(VpcEndpointIds = [aws_vpc_endpoint_id])
+                  response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + vpc_endpoint_id, headers=myHeaders)
+                  if response.status != 200:
+                    errorMessage = 'Unknown Error'
+                    try: errorMessage = json.loads(response.data.decode())['message']
+                    except: errorMessage = response.reason
+                    print(errorMessage)
+                  waitForEndpointDeletion(aws_vpc_endpoint_id)
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
           - { ServiceName: !FindInMap [PrivateLink, !Ref AWS::Region, workspace] }
   WorkspaceVpcEnpointLogGroup:
     Type: AWS::Logs::LogGroup
@@ -457,19 +467,29 @@ Resources:
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
                 return
               if event['RequestType'] == 'Delete':
-                response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
+                response = http.request('GET', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
                 if response.status != 200:
                   errorMessage = 'Unknown Error'
                   try: errorMessage = json.loads(response.data.decode())['message']
                   except: errorMessage = response.reason
                   print(errorMessage)
-                else:
-                  try:
-                    awsVpcEndpointId = json.loads(response.data.decode())['aws_vpc_endpoint_id']
-                    ec2Client.delete_vpc_endpoints(VpcEndpointIds = [awsVpcEndpointId])
-                    waitForEndpointDeletion(awsVpcEndpointId)
-                  except Exception as e: print(str(e))
-                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                  return
+                endpointData = json.loads(response.data.decode())
+                vpc_endpoint_id = endpointData['vpc_endpoint_id']
+                aws_vpc_endpoint_id = endpointData['aws_vpc_endpoint_id']
+                try:
+                  ec2Client.delete_vpc_endpoints(VpcEndpointIds = [aws_vpc_endpoint_id])
+                  response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + vpc_endpoint_id, headers=myHeaders)
+                  if response.status != 200:
+                    errorMessage = 'Unknown Error'
+                    try: errorMessage = json.loads(response.data.decode())['message']
+                    except: errorMessage = response.reason
+                    print(errorMessage)
+                  waitForEndpointDeletion(aws_vpc_endpoint_id)
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
           - { ServiceName: !FindInMap [PrivateLink, !Ref AWS::Region, backend] }
   BackendVpcEnpointLogGroup:
     Type: AWS::Logs::LogGroup
