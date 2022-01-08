@@ -21,10 +21,9 @@ Parameters:
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-23
   
   DBSPublicSubnet1CidrBlock:
-    Description: The CIDR block of the first public subnet for the Databricks data plane
+    Description: The CIDR block of the first public subnet for the Databricks data plane. If left empty no internet connectivity is available
     Type: String
-    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
-    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+    Default: ""
   
   DBSPublicSubnet2CidrBlock:
     Description: The CIDR block of the second public subnet for the Databricks data plane. Specify only for high availability of internet access
@@ -88,8 +87,11 @@ Parameters:
 #-------------------------------------------------------------------------
 Conditions:
 
+  EnablePublicInternetConnectivity:
+    !Not [!Equals [!Ref DBSPublicSubnet1CidrBlock, ""] ]
+
   HighAvailabilityForInternet:
-    !Not [ !Equals [!Ref DBSPublicSubnet2CidrBlock, ""] ]
+    !And [!Not [!Equals [!Ref DBSPublicSubnet2CidrBlock, ""] ], !Not [!Equals [!Ref DBSPublicSubnet1CidrBlock, ""] ] ]
 
   CreateEncryptionKey:
     !Equals [!Ref DBSEncryptionKeyArn, ""]
@@ -101,7 +103,7 @@ Conditions:
     !Equals [!Ref DBSCrossAccountRoleArn, ""]
 
   EnablePrivateLink:
-    !Not [ !Equals [!Ref DBSPrivateLinkMode, "Off"] ]
+    !Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ]
   
   PublicAccessForPrivateLink:
     !Equals [!Ref DBSPrivateLinkMode, "PublicAccessEnabled"]
@@ -164,6 +166,7 @@ Resources:
   
   # Internet gateway
   DBSVpcIgw:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::InternetGateway
     DependsOn: DBSVpc
     Properties:
@@ -174,6 +177,7 @@ Resources:
           Value: !Sub ${AWS::StackName}-DatabricksVpcIgw
   #... attached to the VPC
   DBSVpcIgwAttachment:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       InternetGatewayId: !GetAtt DBSVpcIgw.InternetGatewayId
@@ -181,6 +185,7 @@ Resources:
   
   # The subnets for the public resources, such as the NAT Gateway
   DBSPublicSubnet1:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::Subnet
     Properties: 
       VpcId: !Ref DBSVpc
@@ -234,6 +239,7 @@ Resources:
 
   # The Elastic IP and the NAT Gateway 1
   ElasticIPForNat1:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::EIP
     Properties: 
       Domain: vpc
@@ -243,6 +249,7 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-DatabricksNat1ElasticIP
   DBSNat1:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::NatGateway
     Properties: 
       AllocationId: !GetAtt ElasticIPForNat1.AllocationId
@@ -280,6 +287,7 @@ Resources:
 
   # The route table attached to the public subnets
   DBSPublicRouteTable:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::RouteTable
     Properties: 
       VpcId: !Ref DBSVpc
@@ -290,6 +298,7 @@ Resources:
           Value: !Sub ${AWS::StackName}-DatabricksPublicRouteTable
   # Route to the internet
   RouteToInternetInPublicRouteTable:
+    Condition: EnablePublicInternetConnectivity
     DependsOn: DBSVpcIgwAttachment
     Type: AWS::EC2::Route
     Properties: 
@@ -298,6 +307,7 @@ Resources:
       GatewayId: !Ref DBSVpcIgw
   # Associate the route table to the subnets
   PublicSubnet1RouteTableAssociation:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties: 
       RouteTableId: !Ref DBSPublicRouteTable
@@ -321,6 +331,7 @@ Resources:
           Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable1
   # Route to the internet
   RouteToInternetInPrivateRouteTable1:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref DBSPrivateRouteTable1
@@ -345,6 +356,7 @@ Resources:
           Value: DatabricksPrivateRouteTable2
   # Route to the internet
   RouteToInternetInPrivateRouteTable2:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref DBSPrivateRouteTable2
@@ -365,9 +377,9 @@ Resources:
       VpcEndpointType: Gateway
       VpcId: !Ref DBSVpc
       RouteTableIds:
-        - !Ref DBSPublicRouteTable
         - !Ref DBSPrivateRouteTable1
         - !Ref DBSPrivateRouteTable2
+        - !If [EnablePublicInternetConnectivity, !Ref DBSPublicRouteTable, !Ref AWS::NoValue]
 
   # The security group for the workspace
   DBSWorkspaceSecurityGroup:
