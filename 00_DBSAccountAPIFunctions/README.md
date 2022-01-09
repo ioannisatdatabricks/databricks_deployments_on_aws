@@ -12,5 +12,8 @@ ParameterKey=ResourceOwner,ParameterValue=<RESOURCE_OWNER> \
 ParameterKey=ResourcePrefix,ParameterValue=DatabricksAccountAPI \
 --template-body file://dbs-account-api.yml
 
+## Examples of calling the custom resouces
+The exampleCustomResources.yml template provides an example of how the relevant custom resources may be created in a CloudFormation script
+
 ## TODO
-- Support update operations for the workspace object
+Make the workspace creation and update idempotent so that it can be protected against repeated CloudFormation calls

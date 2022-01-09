@@ -730,11 +730,12 @@ Resources:
     Condition: EnablePrivateLink
     Type: Custom::WorkspaceVpcEnpoint
     Properties:
-      ServiceToken: !ImportValue dbs-account-api-WorkspaceVpcEnpointFn-Arn
+      ServiceToken: !ImportValue dbs-account-api-VpcEnpointFn-Arn
       DatabricksAccountId: !Ref DBSAccountId
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
+      Service: Workspace
       VpcId: !Ref DBSVpc
       Subnets:
         - !Ref DBSPrivateSubnet1
@@ -746,11 +747,12 @@ Resources:
     Condition: EnablePrivateLink
     Type: Custom::BackendVpcEnpoint
     Properties:
-      ServiceToken: !ImportValue dbs-account-api-BackendVpcEnpointFn-Arn
+      ServiceToken: !ImportValue dbs-account-api-VpcEnpointFn-Arn
       DatabricksAccountId: !Ref DBSAccountId
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
+      Service: Backend
       VpcId: !Ref DBSVpc
       Subnets:
         - !Ref DBSPrivateSubnet1
