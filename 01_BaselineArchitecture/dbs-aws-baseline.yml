@@ -50,6 +50,17 @@ Parameters:
       - "PublicAccessEnabled"
       - "PublicAccessDisabled"
     Default: "Off"
+  
+  DBSPrivateLinkSubnet1CidrBlock:
+    Description: The CIDR block of the first private subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the first Databricks workspace private subnet
+    Type: String
+    Default: ""
+  
+  DBSPrivateLinkSubnet2CidrBlock:
+    Description: The CIDR block of the second private subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the second Databricks workspace private subnet
+    Type: String
+    Default: ""
+
 
   DBSEncryptionKeyArn:
     Description: The existing ARN of the KMS key used for the encryption/decryption of Databricks notebooks
@@ -107,6 +118,15 @@ Conditions:
   
   PublicAccessForPrivateLink:
     !Equals [!Ref DBSPrivateLinkMode, "PublicAccessEnabled"]
+  
+  CreateFirstSubnetForPrivateLink:
+    !And [!Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ], !Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ] ]
+  
+  CreateSecondSubnetForPrivateLink:
+    !And [!Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ], !Not [!Equals [!Ref DBSPrivateLinkSubnet2CidrBlock, ""] ] ]
+  
+  CreateRouteTablesForPrivateLinkSubnetRouteTable:
+    !And [!Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ], !Or [!Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSPrivateLinkSubnet2CidrBlock, ""] ] ] ]
 
 #-------------------------------------------------------------------------
 Resources:
@@ -369,6 +389,57 @@ Resources:
       RouteTableId: !Ref DBSPrivateRouteTable2
       SubnetId: !Ref DBSPrivateSubnet2
 
+  # The private subnets for PrivateLink
+  DBSPrivateLinkSubnet1:
+    Condition: CreateFirstSubnetForPrivateLink
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSPrivateLinkSubnet1CidrBlock
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateLinkSubnet1
+  DBSPrivateLinkSubnet2:
+    Condition: CreateSecondSubnetForPrivateLink
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSPrivateLinkSubnet2CidrBlock
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateLinkSubnet2
+  DBSPrivateLinkRouteTable:
+    Condition: CreateRouteTablesForPrivateLinkSubnetRouteTable
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: DatabricksPrivateLinkRouteTable
+  # Associate the route table to the subnets
+  PrivateLinkSubnet1RouteTableAssociation:
+    Condition: CreateFirstSubnetForPrivateLink
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSPrivateLinkRouteTable
+      SubnetId: !Ref DBSPrivateLinkSubnet1
+  PrivateLinkSubnet2RouteTableAssociation:
+    Condition: CreateSecondSubnetForPrivateLink
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSPrivateLinkRouteTable
+      SubnetId: !Ref DBSPrivateLinkSubnet2
+
   # The S3 gateway endpoint
   S3GatewayEndpoint:
     Type: AWS::EC2::VPCEndpoint
@@ -478,20 +549,6 @@ Resources:
     Type: AWS::EC2::VPCEndpoint
     Properties: 
       ServiceName: !Sub com.amazonaws.${AWS::Region}.kinesis-streams
-      VpcEndpointType: Interface
-      VpcId: !Ref DBSVpc
-      PrivateDnsEnabled: true
-      SecurityGroupIds: 
-        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
-      SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
-
-  # The KMS endpoint
-  KMSInterfaceEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties: 
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.kms
       VpcEndpointType: Interface
       VpcId: !Ref DBSVpc
       PrivateDnsEnabled: true
@@ -738,8 +795,14 @@ Resources:
       Service: Workspace
       VpcId: !Ref DBSVpc
       Subnets:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !If
+          - CreateFirstSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet1
+          - !Ref DBSPrivateSubnet1
+        - !If
+          - CreateSecondSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet2
+          - !Ref DBSPrivateSubnet2
       SecurityGroups:
         - !Ref DBSWorkspaceSecurityGroup
 
@@ -755,8 +818,14 @@ Resources:
       Service: Backend
       VpcId: !Ref DBSVpc
       Subnets:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !If
+          - CreateFirstSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet1
+          - !Ref DBSPrivateSubnet1
+        - !If
+          - CreateSecondSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet2
+          - !Ref DBSPrivateSubnet2
       SecurityGroups:
         - !Ref DBSWorkspaceSecurityGroup
 

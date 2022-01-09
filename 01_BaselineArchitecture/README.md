@@ -27,3 +27,11 @@ ParameterKey=DBSCrossAccountRoleName,ParameterValue=DatabricksCrossAccountRole \
 ParameterKey=DBSAccountId,ParameterValue=<DATABRICKS_ACCOUNT_ID> \
 ParameterKey=DBSUsername,ParameterValue=<DATABRICKS_USER_NAME> \
 ParameterKey=DBSPassword,ParameterValue=<DATABRICKS_PASSWORD>
+
+### Additional parameters for enabling Private Link:
+ParameterKey=DBSPrivateLinkMode,ParameterValue=PublicAccessEnabled \
+ParameterKey=DBSPrivateLinkSubnet1CidrBlock,ParameterValue=10.10.2.0/24 \
+ParameterKey=DBSPrivateLinkSubnet2CidrBlock,ParameterValue=10.10.3.0/24 \
+
+### Additional parameters for enabling high availability to the internet (it will set up a second NAT in the second availability zone)
+ParameterKey=DBSPublicSubnet2CidrBlock,ParameterValue=10.10.1.0/24 \
