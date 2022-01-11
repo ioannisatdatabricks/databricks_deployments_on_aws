@@ -92,10 +92,10 @@ Parameters:
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
     Default: 10.31.8.0/22
 
-  ExistingBucketInSourceRegion:
-    Description: The name of an existing bucket in the source region holding data
-    Type: String
-    Default: ""
+  # ExistingBucketInSourceRegion:
+  #   Description: The name of an existing bucket in the source region holding data
+  #   Type: String
+  #   Default: ""
 
   DBSRootBucketName:
     Description: The name of the bucket holding the Databricks workspace data
@@ -173,8 +173,8 @@ Conditions:
   CreateDatabricksWorkspace:
     !And [!Equals [!Ref AWS::Region, !Ref WorkspaceRegion], !Not [!Equals [!Ref VpcPeerConnectionId, "" ] ] ]
 
-  ExistsBucketInSourceRegion:
-    !And [!Equals [!Ref AWS::Region, !Ref SourceRegion], !Not [!Equals [!Ref ExistingBucketInSourceRegion, ""] ] ]
+  # ExistsBucketInSourceRegion:
+  #   !And [!Equals [!Ref AWS::Region, !Ref SourceRegion], !Not [!Equals [!Ref ExistingBucketInSourceRegion, ""] ] ]
 
 #-------------------------------------------------------------------------
 Resources:
@@ -543,21 +543,6 @@ Resources:
         - !Ref PrivateSubnet1
         - !Ref PrivateSubnet2
 
-  # The KMS endpoint
-  KMSInterfaceEndpoint:
-    Condition: IsWorkspaceRegion
-    Type: AWS::EC2::VPCEndpoint
-    Properties: 
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.kms
-      VpcEndpointType: Interface
-      VpcId: !Ref Vpc
-      PrivateDnsEnabled: true
-      SecurityGroupIds: 
-        - !GetAtt WorkspaceSecurityGroup.GroupId
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-
   # The KMS CMK for the notebook encryption
   EncryptionKey:
     Condition: CreateEncryptionKey
@@ -655,10 +640,12 @@ Resources:
 
   # The private hosted zone for the s3 endoint
   RecordSetForExistingBucket:
-    Condition: ExistsBucketInSourceRegion
+    Condition: IsSourceRegion
+    # Condition: ExistsBucketInSourceRegion
     Type: AWS::Route53::RecordSet
     Properties: 
-      Name: !Sub ${ExistingBucketInSourceRegion}.s3.${AWS::Region}.amazonaws.com
+      Name: !Sub "*.s3.${AWS::Region}.amazonaws.com"
+      # Name: !Sub ${ExistingBucketInSourceRegion}.s3.${AWS::Region}.amazonaws.com
       Type: A
       AliasTarget: 
         DNSName: !Select [1, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
@@ -688,7 +675,11 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - s3:*
+                  - s3:ListBucket
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:PutObjectAcl
                   - sts:*
                   - kinesis:*
                 Resource: '*'

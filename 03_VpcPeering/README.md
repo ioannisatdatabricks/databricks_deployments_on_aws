@@ -19,9 +19,6 @@ cat > dbs-vpc-peering-parameters.json << EOF
     "ParameterKey": "WorkspaceRegion", "ParameterValue": "eu-west-1"
   },
   {
-    "ParameterKey": "ExistingBucketInSourceRegion", "ParameterValue": "dbs-ioannis-s3-bidirectional-crr-solution-source-bucket"
-  },
-  {
     "ParameterKey": "DBSRootBucketName", "ParameterValue": "<ROOT_BUCKET_NAME>"
   },
   {
