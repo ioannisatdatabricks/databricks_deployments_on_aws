@@ -2,7 +2,7 @@
 
 ## Cloudformation custom resources to wrap the Databricks API
 The folder 00_DBSAccountAPIFunctions contains a Cloudformation template the definition of lammbda functions which wrap the Databricks Account API, as well as instructions of how to run it.
-The functions exported in Cloudformation so that "custom resources" can be created in dependent stacks.
+The functions are exported in Cloudformation to allow "custom resources" to be created in dependent stacks.
 
 ## Baseline architecture
 The folder 01_BaselineArchitecture contains a Cloudformation template which:
