@@ -9,7 +9,7 @@ cloudformation create-stack \
 --capabilities CAPABILITY_NAMED_IAM \
 --parameters \
 ParameterKey=ResourceOwner,ParameterValue=<RESOURCE_OWNER> \
-ParameterKey=ResourcePrefix,ParameterValue=DatabricksAccountAPI \
+ParameterKey=ResourcePrefix,ParameterValue=<PREFIX_FOR_CREATED_RESOURCES> \
 --template-body file://dbs-account-api.yml
 
 ## Examples of calling the custom resouces

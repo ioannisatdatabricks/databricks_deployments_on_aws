@@ -18,7 +18,7 @@ cloudformation create-stack \
 ParameterKey=ResourceOwner,ParameterValue=<RESOURCE_OWNER> \
 ParameterKey=DBSRootBucketName,ParameterValue=<ROOT_BUCKET_NAME> \
 ParameterKey=DBSVPCCidrBlock,ParameterValue=10.10.0.0/16 \
-ParameterKey=DBSPublicSubnet1CidrBlock,ParameterValue=10.10.0.0/24 \
+ParameterKey=DBSNatSubnet1CidrBlock,ParameterValue=10.10.0.0/25 \
 ParameterKey=DBSPrivateSubnet1CidrBlock,ParameterValue=10.10.4.0/22 \
 ParameterKey=DBSPrivateSubnet2CidrBlock,ParameterValue=10.10.8.0/22 \
 ParameterKey=DBSEncryptionKeyAlias,ParameterValue=databricks-notebook-key \
@@ -28,10 +28,15 @@ ParameterKey=DBSAccountId,ParameterValue=<DATABRICKS_ACCOUNT_ID> \
 ParameterKey=DBSUsername,ParameterValue=<DATABRICKS_USER_NAME> \
 ParameterKey=DBSPassword,ParameterValue=<DATABRICKS_PASSWORD>
 
+### Additional parameters for enabling the network firewall
+ParameterKey=DBSFirewallSubnet1CidrBlock,ParameterValue=10.10.1.0/25 \
+
 ### Additional parameters for enabling Private Link:
 ParameterKey=DBSPrivateLinkMode,ParameterValue=PublicAccessEnabled \
-ParameterKey=DBSPrivateLinkSubnet1CidrBlock,ParameterValue=10.10.2.0/24 \
-ParameterKey=DBSPrivateLinkSubnet2CidrBlock,ParameterValue=10.10.3.0/24 \
+ParameterKey=DBSPrivateLinkSubnet1CidrBlock,ParameterValue=10.10.2.0/25 \
+ParameterKey=DBSPrivateLinkSubnet2CidrBlock,ParameterValue=10.10.2.128/25 \
 
 ### Additional parameters for enabling high availability to the internet (it will set up a second NAT in the second availability zone)
-ParameterKey=DBSPublicSubnet2CidrBlock,ParameterValue=10.10.1.0/24 \
+ParameterKey=DBSNatSubnet2CidrBlock,ParameterValue=10.10.0.128/25 \
+#### If a firewall is enabled then this one needs to be set up as well:
+ParameterKey=DBSFirewallSubnet2CidrBlock,ParameterValue=10.10.1.128/25 \

@@ -27,43 +27,91 @@ Conditions:
 #-------------------------------------------------------------------------
 Mappings:
 
-  PrivateLink:
+  DatabricksAddresses:
     us-east-1:
       "workspace": "com.amazonaws.vpce.us-east-1.vpce-svc-09143d1e626de2f04"
       "backend": "com.amazonaws.vpce.us-east-1.vpce-svc-00018a8c3ff62ffdf"
+      "webapp": "nvirginia.cloud.databricks.com"
+      "sccrelay": "tunnel.us-east-1.cloud.databricks.com"
+      "rds": "mdb7sywh50xhpr.chkweekm4xjq.us-east-1.rds.amazonaws.com"
+      "controlplane": "3.237.73.224/28"
     us-east-2:
       "workspace": "com.amazonaws.vpce.us-east-2.vpce-svc-041dc2b4d7796b8d3"
       "backend": "com.amazonaws.vpce.us-east-2.vpce-svc-090a8fab0d73e39a6"
+      "webapp": "ohio.cloud.databricks.com"
+      "sccrelay": "tunnel.us-east-2.cloud.databricks.com"
+      "rds": "md7wf1g369xf22.cluz8hwxjhb6.us-east-2.rds.amazonaws.com"
+      "controlplane": "3.128.237.208/28"
     us-west-1:
       "workspace": "UNSUPPORTED"
       "backend": "UNSUPPORTED"
+      "webapp": "oregon.cloud.databricks.com"
+      "sccrelay": "tunnel.cloud.databricks.com"
+      "rds": "mdzsbtnvk0rnce.c13weuwubexq.us-west-1.rds.amazonaws.com"
+      "controlplane": "44.234.192.32/28"
     us-west-2:
       "workspace": "com.amazonaws.vpce.us-west-2.vpce-svc-0129f463fcfbc46c5"
       "backend": "com.amazonaws.vpce.us-west-2.vpce-svc-0158114c0c730c3bb"
+      "webapp": "oregon.cloud.databricks.com"
+      "sccrelay": "tunnel.cloud.databricks.com"
+      "rds": "mdpartyyphlhsp.caj77bnxuhme.us-west-2.rds.amazonaws.com"
+      "controlplane": "44.234.192.32/28"
     eu-west-1:
       "workspace": "com.amazonaws.vpce.eu-west-1.vpce-svc-0da6ebf1461278016"
       "backend": "com.amazonaws.vpce.eu-west-1.vpce-svc-09b4eb2bc775f4e8c"
+      "webapp": "ireland.cloud.databricks.com"
+      "sccrelay": "tunnel.eu-west-1.cloud.databricks.com"
+      "rds": "md15cf9e1wmjgny.cxg30ia2wqgj.eu-west-1.rds.amazonaws.com"
+      "controlplane": "3.250.244.112/28"
     eu-west-2:
       "workspace": "com.amazonaws.vpce.eu-west-2.vpce-svc-01148c7cdc1d1326c"
       "backend": "com.amazonaws.vpce.eu-west-2.vpce-svc-05279412bf5353a45"
+      "webapp": "london.cloud.databricks.com"
+      "sccrelay": "tunnel.eu-west-2.cloud.databricks.com"
+      "rds": "mdio2468d9025m.c6fvhwk6cqca.eu-west-2.rds.amazonaws.com"
+      "controlplane": "18.134.65.240/28"
     eu-central-1:
       "workspace": "com.amazonaws.vpce.eu-central-1.vpce-svc-081f78503812597f7"
       "backend": "com.amazonaws.vpce.eu-central-1.vpce-svc-08e5dfca9572c85c4"
+      "webapp": "frankfurt.cloud.databricks.com"
+      "sccrelay": "tunnel.eu-central-1.cloud.databricks.com"
+      "rds": "mdv2llxgl8lou0.ceptxxgorjrc.eu-central-1.rds.amazonaws.com"
+      "controlplane": "18.159.44.32/28"
     ap-southeast-1:
       "workspace": "com.amazonaws.vpce.ap-southeast-1.vpce-svc-02535b257fc253ff4"
       "backend": "com.amazonaws.vpce.ap-southeast-1.vpce-svc-0557367c6fc1a0c5c"
+      "webapp": "singapore.cloud.databricks.com"
+      "sccrelay": "tunnel.ap-southeast-1.cloud.databricks.com"
+      "rds": "md1n4trqmokgnhr.csnrqwqko4ho.ap-southeast-1.rds.amazonaws.com"
+      "controlplane": "13.214.1.96/28"
     ap-southeast-2:
       "workspace": "com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b87155ddd6954974"
       "backend": "com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b4a72e8f825495f6"
+      "webapp": "sydney.cloud.databricks.com"
+      "sccrelay": "tunnel.ap-southeast-2.cloud.databricks.com"
+      "rds": "mdnrak3rme5y1c.c5f38tyb1fdu.ap-southeast-2.rds.amazonaws.com"
+      "controlplane": "3.26.4.0/28"
     ap-northeast-1:
       "workspace": "com.amazonaws.vpce.ap-northeast-1.vpce-svc-02691fd610d24fd64"
       "backend": "com.amazonaws.vpce.ap-northeast-1.vpce-svc-02aa633bda3edbec0"
+      "webapp": "tokyo.cloud.databricks.com"
+      "sccrelay": "tunnel.ap-northeast-1.cloud.databricks.com"
+      "rds": "mddx5a4bpbpm05.cfrfsun7mryq.ap-northeast-1.rds.amazonaws.com"
+      "controlplane": "35.72.28.0/28"
     ap-south-1:
       "workspace": "com.amazonaws.vpce.ap-south-1.vpce-svc-0dbfe5d9ee18d6411"
       "backend": "com.amazonaws.vpce.ap-south-1.vpce-svc-03fd4d9b61414f3de"
+      "webapp": "mumbai.cloud.databricks.com"
+      "sccrelay": "tunnel.ap-south-1.cloud.databricks.com"
+      "rds": "mdjanpojt83v6j.c5jml0fhgver.ap-south-1.rds.amazonaws.com"
+      "controlplane": "65.0.37.64/28"
     ca-central-1:
       "workspace": "com.amazonaws.vpce.ca-central-1.vpce-svc-0205f197ec0e28d65"
       "backend": "com.amazonaws.vpce.ca-central-1.vpce-svc-0c4e25bdbcbfbb684"
+      "webapp": "canada.cloud.databricks.com"
+      "sccrelay": "tunnel.ca-central-1.cloud.databricks.com"
+      "rds": "md1w81rjeh9i4n5.co1tih5pqdrl.ca-central-1.rds.amazonaws.com"
+      "controlplane": "3.96.84.208/28"
 
 #-------------------------------------------------------------------------
 Resources:
@@ -158,6 +206,38 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
+
+
+  # Databricks Addresses
+  DatabricksAddressesFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ResourcePrefix}-DatabricksAddresses
+      Description: The custom resource function to retrieve the public addresses of Databricks in the region
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile:  !Sub 
+          - |
+            import cfnresponse, socket
+            def lambda_handler(event, context):
+              attributes = {} if event['RequestType'] == 'Delete' else {"Webapp" : "${webapp}", "SCCRelay" : "${sccrelay}", "Metastore" : "${rds}", "MetastoreIP" : socket.gethostbyname("${rds}"), "ControlPlane" : "${controlplane}"}
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, attributes)
+          - webapp: !FindInMap [DatabricksAddresses, !Ref AWS::Region, webapp]
+            sccrelay: !FindInMap [DatabricksAddresses, !Ref AWS::Region, sccrelay]
+            rds: !FindInMap [DatabricksAddresses, !Ref AWS::Region, rds]
+            controlplane: !FindInMap [DatabricksAddresses, !Ref AWS::Region, controlplane]
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  DatabricksAddressesLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${DatabricksAddressesFn}
+      RetentionInDays: 365
 
 
   # Credentials configuration
@@ -386,8 +466,8 @@ Resources:
                   cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
                 except Exception as e:
                   cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
-          - ServiceNameWorkspace: !FindInMap [PrivateLink, !Ref AWS::Region, workspace]
-            ServiceNameBackend: !FindInMap [PrivateLink, !Ref AWS::Region, backend]
+          - ServiceNameWorkspace: !FindInMap [DatabricksAddresses, !Ref AWS::Region, workspace]
+            ServiceNameBackend: !FindInMap [DatabricksAddresses, !Ref AWS::Region, backend]
   VpcEnpointLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -687,6 +767,12 @@ Resources:
 
 #-------------------------------------------------------------------------
 Outputs:
+
+  DatabricksAddressesFnArn:
+    Description: The ARN of the CFN function returning the Databricks public addresses
+    Value: !GetAtt DatabricksAddressesFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-DatabricksAddressesFn-Arn
 
   CredentialsConfigurationFnArn:
     Description: The ARN of the CFN function creating a Databricks credentials configuration object

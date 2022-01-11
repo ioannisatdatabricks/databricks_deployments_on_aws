@@ -20,27 +20,37 @@ Parameters:
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[6-9]|2[0-3])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-23
   
-  DBSPublicSubnet1CidrBlock:
-    Description: The CIDR block of the first public subnet for the Databricks data plane. If left empty no internet connectivity is available
+  DBSNatSubnet1CidrBlock:
+    Description: The CIDR block of the first subnet for the NAT gateway. If left empty no internet connectivity is available
     Type: String
     Default: ""
   
-  DBSPublicSubnet2CidrBlock:
-    Description: The CIDR block of the second public subnet for the Databricks data plane. Specify only for high availability of internet access
+  DBSNatSubnet2CidrBlock:
+    Description: The CIDR block of the second subnet for the NAT gateway. Specify only for high availability of internet access
     Type: String
     Default: ""
   
-  DBSPrivateSubnet1CidrBlock:
-    Description: The CIDR block of the first private subnet for the Databricks data plane
+  DBSClusterSubnet1CidrBlock:
+    Description: The CIDR block of the first subnet for the Databricks clusters
     Type: String
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
   
-  DBSPrivateSubnet2CidrBlock:
-    Description: The CIDR block of the second private subnet for the Databricks data plane
+  DBSClusterSubnet2CidrBlock:
+    Description: The CIDR block of the second subnet for the Databricks clusters
     Type: String
     AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+
+  DBSFirewallSubnet1CidrBlock:
+    Description: The CIDR block of the first subnet for the network firewall
+    Type: String
+    Default: ""
+
+  DBSFirewallSubnet2CidrBlock:
+    Description: The CIDR block of the second subnet for the network firewall
+    Type: String
+    Default: ""
 
   DBSPrivateLinkMode:
     Description: The Private Link setup mode for the Databricks workspace
@@ -52,15 +62,14 @@ Parameters:
     Default: "Off"
   
   DBSPrivateLinkSubnet1CidrBlock:
-    Description: The CIDR block of the first private subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the first Databricks workspace private subnet
+    Description: The CIDR block of the first subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the first Databricks cluster subnet
     Type: String
     Default: ""
   
   DBSPrivateLinkSubnet2CidrBlock:
-    Description: The CIDR block of the second private subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the second Databricks workspace private subnet
+    Description: The CIDR block of the second subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the second Databricks cluster subnet
     Type: String
     Default: ""
-
 
   DBSEncryptionKeyArn:
     Description: The existing ARN of the KMS key used for the encryption/decryption of Databricks notebooks
@@ -99,10 +108,19 @@ Parameters:
 Conditions:
 
   EnablePublicInternetConnectivity:
-    !Not [!Equals [!Ref DBSPublicSubnet1CidrBlock, ""] ]
+    !Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ]
 
   HighAvailabilityForInternet:
-    !And [!Not [!Equals [!Ref DBSPublicSubnet2CidrBlock, ""] ], !Not [!Equals [!Ref DBSPublicSubnet1CidrBlock, ""] ] ]
+    !And [!Not [!Equals [!Ref DBSNatSubnet2CidrBlock, ""] ], !Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ] ]
+
+  CreateNetworkFirewall:
+    !And [!Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSFirewallSubnet1CidrBlock, ""] ] ]
+
+  HighAvailabilityForInternetAndNetworkFirewall:
+    !And [!Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSFirewallSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSNatSubnet2CidrBlock, ""] ], !Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ] ]
+
+  CreateNetworkFirewallRuleWhenNoPrivateLink:
+    !And [!Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSFirewallSubnet1CidrBlock, ""] ], !Equals [!Ref DBSPrivateLinkMode, "Off"] ]
 
   CreateEncryptionKey:
     !Equals [!Ref DBSEncryptionKeyArn, ""]
@@ -130,6 +148,12 @@ Conditions:
 
 #-------------------------------------------------------------------------
 Resources:
+
+  # The databricks addresses
+  DatabricksAddresses:
+    Type: Custom::DatabricksAddresses
+    Properties:
+      ServiceToken: !ImportValue dbs-account-api-DatabricksAddressesFn-Arn
 
   # The root bucket
   DBSRootBucket:
@@ -183,7 +207,7 @@ Resources:
           Value: !Ref ResourceOwner
         - Key: Name
           Value: !Sub ${AWS::StackName}-DatabricksVPC
-  
+
   # Internet gateway
   DBSVpcIgw:
     Condition: EnablePublicInternetConnectivity
@@ -202,192 +226,88 @@ Resources:
     Properties:
       InternetGatewayId: !GetAtt DBSVpcIgw.InternetGatewayId
       VpcId: !Ref DBSVpc
-  
-  # The subnets for the public resources, such as the NAT Gateway
-  DBSPublicSubnet1:
-    Condition: EnablePublicInternetConnectivity
+
+  # The subnets and route for the Firewall
+  DBSFirewallSubnet1:
+    Condition: CreateNetworkFirewall
     Type: AWS::EC2::Subnet
     Properties: 
       VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPublicSubnet1CidrBlock
+      CidrBlock: !Ref DBSFirewallSubnet1CidrBlock
       AvailabilityZone: !Select [0, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPublicSubnet1
-  DBSPublicSubnet2:
-    Condition: HighAvailabilityForInternet
+          Value: !Sub ${AWS::StackName}-DBSFirewallSubnet1
+  DBSFirewallSubnet2:
+    Condition: HighAvailabilityForInternetAndNetworkFirewall
     Type: AWS::EC2::Subnet
     Properties: 
       VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPublicSubnet2CidrBlock
+      CidrBlock: !Ref DBSFirewallSubnet2CidrBlock
       AvailabilityZone: !Select [1, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPublicSubnet2
+          Value: !Sub ${AWS::StackName}-DBSFirewallSubnet2
 
-  # The two private subnets
-  DBSPrivateSubnet1:
+  # The subnets and route table for the NAT Gateway
+  DBSNatSubnet1:
+    Condition: EnablePublicInternetConnectivity
     Type: AWS::EC2::Subnet
     Properties: 
       VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPrivateSubnet1CidrBlock
+      CidrBlock: !Ref DBSNatSubnet1CidrBlock
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: !If [CreateNetworkFirewall, false, true]
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNatSubnet1
+  DBSNatSubnet2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSNatSubnet2CidrBlock
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: !If [CreateNetworkFirewall, false, true]
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNatSubnet2
+
+  # The two private subnets for the Databricks clusters
+  DBSClusterSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSClusterSubnet1CidrBlock
       AvailabilityZone: !Select [0, !GetAZs ""]
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPrivateSubnet1
-  DBSPrivateSubnet2:
+          Value: !Sub ${AWS::StackName}-DatabricksClusterSubnet1
+  DBSClusterSubnet2:
     Type: AWS::EC2::Subnet
     Properties: 
       VpcId: !Ref DBSVpc
-      CidrBlock: !Ref DBSPrivateSubnet2CidrBlock
+      CidrBlock: !Ref DBSClusterSubnet2CidrBlock
       AvailabilityZone: !Select [1, !GetAZs ""]
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPrivateSubnet2
-
-  # The Elastic IP and the NAT Gateway 1
-  ElasticIPForNat1:
-    Condition: EnablePublicInternetConnectivity
-    Type: AWS::EC2::EIP
-    Properties: 
-      Domain: vpc
-      Tags: 
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat1ElasticIP
-  DBSNat1:
-    Condition: EnablePublicInternetConnectivity
-    Type: AWS::EC2::NatGateway
-    Properties: 
-      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
-      ConnectivityType: public
-      SubnetId: !Ref DBSPublicSubnet1
-      Tags: 
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat1
-
-  #The Elastic IP and the NAT Gateway 2
-  ElasticIPForNat2:
-    Condition: HighAvailabilityForInternet
-    Type: AWS::EC2::EIP
-    Properties: 
-      Domain: vpc
-      Tags: 
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat2ElasticIP
-  DBSNat2:
-    Condition: HighAvailabilityForInternet
-    Type: AWS::EC2::NatGateway
-    Properties: 
-      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
-      ConnectivityType: public
-      SubnetId: !Ref DBSPublicSubnet2
-      Tags: 
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksNat2
-
-  # The route table attached to the public subnets
-  DBSPublicRouteTable:
-    Condition: EnablePublicInternetConnectivity
-    Type: AWS::EC2::RouteTable
-    Properties: 
-      VpcId: !Ref DBSVpc
-      Tags:
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPublicRouteTable
-  # Route to the internet
-  RouteToInternetInPublicRouteTable:
-    Condition: EnablePublicInternetConnectivity
-    DependsOn: DBSVpcIgwAttachment
-    Type: AWS::EC2::Route
-    Properties: 
-      RouteTableId: !Ref DBSPublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref DBSVpcIgw
-  # Associate the route table to the subnets
-  PublicSubnet1RouteTableAssociation:
-    Condition: EnablePublicInternetConnectivity
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties: 
-      RouteTableId: !Ref DBSPublicRouteTable
-      SubnetId: !Ref DBSPublicSubnet1
-  PublicSubnet2RouteTableAssociation:
-    Condition: HighAvailabilityForInternet
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties: 
-      RouteTableId: !Ref DBSPublicRouteTable
-      SubnetId: !Ref DBSPublicSubnet2
-
-  # The route table for the private subnet 1
-  DBSPrivateRouteTable1:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref DBSVpc
-      Tags:
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable1
-  # Route to the internet
-  RouteToInternetInPrivateRouteTable1:
-    Condition: EnablePublicInternetConnectivity
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable1
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref DBSNat1
-  # Associate the route table to the subnets
-  PrivateSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable1
-      SubnetId: !Ref DBSPrivateSubnet1
-
-  # The route table for the private subnet 2
-  DBSPrivateRouteTable2:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref DBSVpc
-      Tags:
-        - Key: Owner
-          Value: !Ref ResourceOwner
-        - Key: Name
-          Value: DatabricksPrivateRouteTable2
-  # Route to the internet
-  RouteToInternetInPrivateRouteTable2:
-    Condition: EnablePublicInternetConnectivity
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable2
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !If [ HighAvailabilityForInternet, !Ref DBSNat2, !Ref DBSNat1 ]
-  # Associate the route table to the subnets
-  PrivateSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref DBSPrivateRouteTable2
-      SubnetId: !Ref DBSPrivateSubnet2
+          Value: !Sub ${AWS::StackName}-DatabricksClusterSubnet2
 
   # The private subnets for PrivateLink
   DBSPrivateLinkSubnet1:
@@ -416,6 +336,355 @@ Resources:
           Value: !Ref ResourceOwner
         - Key: Name
           Value: !Sub ${AWS::StackName}-DatabricksPrivateLinkSubnet2
+
+  # The Elastic IPs for the NAT Gateways
+  ElasticIPForNat1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: vpc
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat1ElasticIP
+  ElasticIPForNat2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: vpc
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat2ElasticIP
+  # The NAT gateways
+  DBSNat1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref DBSNatSubnet1
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat1
+  DBSNat2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref DBSNatSubnet2
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat2
+
+  # The network firewall policy stateless rules
+  StatelessNetworkFirewallRules:
+    Condition: CreateNetworkFirewall
+    Type: AWS::NetworkFirewall::RuleGroup
+    Properties: 
+      RuleGroupName: !Sub ${AWS::StackName}-StatelessNetworkFirewallRules
+      Description: Stateless rules for the Databricks network firewall policy
+      Type: STATELESS
+      Capacity: 100
+      RuleGroup:
+        RulesSource:
+          StatelessRulesAndCustomActions: 
+            StatelessRules:
+              - Priority: 11
+                RuleDefinition:
+                  Actions:
+                    - aws:pass
+                  MatchAttributes:
+                    Destinations:
+                      - AddressDefinition: !Sub ${DatabricksAddresses.MetastoreIP}/32
+                    DestinationPorts:
+                      - FromPort: 3306
+                        ToPort: 3306
+                    Protocols:
+                      - 6
+                    Sources:
+                      - AddressDefinition: !Ref DBSVPCCidrBlock
+                      - AddressDefinition: !Sub ${ElasticIPForNat1}/32
+                      - !If
+                        - HighAvailabilityForInternetAndNetworkFirewall
+                        - AddressDefinition: !Sub ${ElasticIPForNat2}/32
+                        - !Ref AWS::NoValue
+              - Priority: 12
+                RuleDefinition:
+                  Actions:
+                    - aws:pass
+                  MatchAttributes:
+                    DestinationPorts:
+                      - FromPort: 1024
+                        ToPort: 65535
+                    Protocols:
+                      - 6
+                    Destinations:
+                      - AddressDefinition: !Ref DBSVPCCidrBlock
+                      - AddressDefinition: !Sub ${ElasticIPForNat1}/32
+                      - !If
+                        - HighAvailabilityForInternetAndNetworkFirewall
+                        - AddressDefinition: !Sub ${ElasticIPForNat2}/32
+                        - !Ref AWS::NoValue
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The network firewall policy stateful rules
+  StatefulNetworkFirewallRules:
+    Condition: CreateNetworkFirewallRuleWhenNoPrivateLink
+    Type: AWS::NetworkFirewall::RuleGroup
+    Properties: 
+      RuleGroupName: !Sub ${AWS::StackName}-StatefulNetworkFirewallRules
+      Description: Stateful rules for the Databricks network firewall policy
+      Type: STATEFUL
+      Capacity: 100
+      RuleGroup:
+        RulesSource: 
+          RulesSourceList:
+            GeneratedRulesType: ALLOWLIST
+            Targets: 
+              - !GetAtt DatabricksAddresses.Webapp
+              - !GetAtt DatabricksAddresses.SCCRelay
+            TargetTypes: 
+              - TLS_SNI
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The network firewall policy
+  DBSNetworkFirewallPolicy:
+    Condition: CreateNetworkFirewall
+    Type: AWS::NetworkFirewall::FirewallPolicy
+    Properties:
+      FirewallPolicyName: !Sub ${AWS::StackName}-NetworkFirewallPolicy
+      Description: Network Firewall Policy for the Databricks VPC
+      FirewallPolicy:
+        StatelessRuleGroupReferences:
+          - ResourceArn: !Ref StatelessNetworkFirewallRules
+            Priority: 100
+        StatelessDefaultActions:
+          - !If [CreateNetworkFirewallRuleWhenNoPrivateLink, aws:forward_to_sfe, aws:drop ]
+        StatelessFragmentDefaultActions:
+          - !If [CreateNetworkFirewallRuleWhenNoPrivateLink, aws:forward_to_sfe, aws:drop ]
+        StatefulRuleGroupReferences:
+          - !If
+            - CreateNetworkFirewallRuleWhenNoPrivateLink
+            - ResourceArn: !Ref StatefulNetworkFirewallRules
+            - !Ref AWS::NoValue
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The network firewalls
+  DBSNetworkFirewall1:
+    Condition: CreateNetworkFirewall
+    Type: AWS::NetworkFirewall::Firewall
+    Properties:
+      FirewallName: !Sub ${AWS::StackName}-NetworkFirewall1
+      Description: Primary network firewall for the Databricks VPC
+      FirewallPolicyArn: !Ref DBSNetworkFirewallPolicy
+      DeleteProtection: false
+      FirewallPolicyChangeProtection: false
+      SubnetChangeProtection: true
+      SubnetMappings: 
+        - SubnetId: !Ref DBSFirewallSubnet1
+      VpcId: !Ref DBSVpc
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  DBSNetworkFirewall2:
+    Condition: HighAvailabilityForInternetAndNetworkFirewall
+    Type: AWS::NetworkFirewall::Firewall
+    Properties:
+      FirewallName: !Sub ${AWS::StackName}-NetworkFirewall2
+      Description: Second network firewall for the Databricks VPC
+      FirewallPolicyArn: !Ref DBSNetworkFirewallPolicy
+      DeleteProtection: false
+      FirewallPolicyChangeProtection: false
+      SubnetChangeProtection: true
+      SubnetMappings: 
+        - SubnetId: !Ref DBSFirewallSubnet2
+      VpcId: !Ref DBSVpc
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # Route table for the internet gateway
+  DBSIGWRouteTable:
+    Condition: CreateNetworkFirewall
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksInternetGatewayRouteTable
+  RouteToNat1SubnetInIWGRouteTable:
+    Condition: CreateNetworkFirewall
+    Type: AWS::EC2::Route
+    Properties: 
+      RouteTableId: !Ref DBSIGWRouteTable
+      DestinationCidrBlock: !Ref DBSNatSubnet1CidrBlock
+      VpcEndpointId: !Select [1, !Split [":", !Select [0, !GetAtt DBSNetworkFirewall1.EndpointIds ] ] ]
+  RouteToNat2SubnetInIWGRouteTable:
+    Condition: HighAvailabilityForInternetAndNetworkFirewall
+    Type: AWS::EC2::Route
+    Properties: 
+      RouteTableId: !Ref DBSIGWRouteTable
+      DestinationCidrBlock: !Ref DBSNatSubnet2CidrBlock
+      VpcEndpointId: !Select [1, !Split [":", !Select [0, !GetAtt DBSNetworkFirewall2.EndpointIds ] ] ]
+  DBSIGWRouteTableAssociation:
+    Condition: CreateNetworkFirewall
+    Type: AWS::EC2::GatewayRouteTableAssociation
+    Properties: 
+      GatewayId: !Ref DBSVpcIgw
+      RouteTableId: !Ref DBSIGWRouteTable
+
+  # Route table for the firewall subnets
+  DBSFirewallRouteTable:
+    Condition: CreateNetworkFirewall
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksFirewallRouteTable
+  RouteToInternetInFirewallRouteTable:
+    Condition: CreateNetworkFirewall
+    DependsOn: DBSVpcIgwAttachment
+    Type: AWS::EC2::Route
+    Properties: 
+      RouteTableId: !Ref DBSFirewallRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref DBSVpcIgw
+  FirewallSubnet1RouteTableAssociation:
+    Condition: CreateNetworkFirewall
+    DependsOn: RouteToInternetInFirewallRouteTable
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSFirewallRouteTable
+      SubnetId: !Ref DBSFirewallSubnet1
+  FirewallSubnet2RouteTableAssociation:
+    Condition: HighAvailabilityForInternetAndNetworkFirewall
+    DependsOn: RouteToInternetInFirewallRouteTable
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSFirewallRouteTable
+      SubnetId: !Ref DBSFirewallSubnet2
+
+  # The route tables attached to the nat subnets
+  DBSNatRouteTable1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNatRouteTable1
+  DBSNatRouteTable2:
+    Condition: HighAvailabilityForInternetAndNetworkFirewall
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNatRouteTable2
+  # Routes to the internet
+  RouteToInternetInNatRouteTable1:
+    Condition: EnablePublicInternetConnectivity
+    DependsOn: DBSVpcIgwAttachment
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBSNatRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !If [CreateNetworkFirewall, !Ref AWS::NoValue, !Ref DBSVpcIgw]
+      VpcEndpointId: !If
+        - CreateNetworkFirewall
+        - !Select [1, !Split [":", !Select [0, !GetAtt DBSNetworkFirewall1.EndpointIds ] ] ]
+        - !Ref AWS::NoValue
+  RouteToInternetInNatRouteTable2:
+    Condition: HighAvailabilityForInternetAndNetworkFirewall
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBSNatRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      VpcEndpointId: !Select [1, !Split [":", !Select [0, !GetAtt DBSNetworkFirewall2.EndpointIds ] ] ]
+
+  # Associate the route table to the subnets
+  NatSubnet1RouteTableAssociation:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSNatRouteTable1
+      SubnetId: !Ref DBSNatSubnet1
+  NatSubnet2RouteTableAssociation:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !If [HighAvailabilityForInternetAndNetworkFirewall, !Ref DBSNatRouteTable2, !Ref DBSNatRouteTable1 ]
+      SubnetId: !Ref DBSNatSubnet2
+
+  # The route tables for the private subnets
+  DBSPrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable1
+  RouteToInternetInPrivateRouteTable1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBSPrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref DBSNat1
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSPrivateRouteTable1
+      SubnetId: !Ref DBSClusterSubnet1
+  DBSPrivateRouteTable2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable2
+  RouteToInternetInPrivateRouteTable2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBSPrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref DBSNat2
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !If [HighAvailabilityForInternet, !Ref DBSPrivateRouteTable2, !Ref DBSPrivateRouteTable1 ]
+      SubnetId: !Ref DBSClusterSubnet2
+
+  # PrivateLink route tables
   DBSPrivateLinkRouteTable:
     Condition: CreateRouteTablesForPrivateLinkSubnetRouteTable
     Type: AWS::EC2::RouteTable
@@ -425,7 +694,7 @@ Resources:
         - Key: Owner
           Value: !Ref ResourceOwner
         - Key: Name
-          Value: DatabricksPrivateLinkRouteTable
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateLinkRouteTable
   # Associate the route table to the subnets
   PrivateLinkSubnet1RouteTableAssociation:
     Condition: CreateFirstSubnetForPrivateLink
@@ -449,8 +718,8 @@ Resources:
       VpcId: !Ref DBSVpc
       RouteTableIds:
         - !Ref DBSPrivateRouteTable1
-        - !Ref DBSPrivateRouteTable2
-        - !If [EnablePublicInternetConnectivity, !Ref DBSPublicRouteTable, !Ref AWS::NoValue]
+        - !If [HighAvailabilityForInternet, !Ref DBSPrivateRouteTable2, !Ref AWS::NoValue ]
+        - !If [CreateRouteTablesForPrivateLinkSubnetRouteTable, !Ref DBSPrivateLinkRouteTable, !Ref AWS::NoValue ]
 
   # The security group for the workspace
   DBSWorkspaceSecurityGroup:
@@ -541,8 +810,8 @@ Resources:
       SecurityGroupIds: 
         - !GetAtt DBSWorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !Ref DBSClusterSubnet1
+        - !Ref DBSClusterSubnet2
 
   # The Kinesis endpoint
   KinesisInterfaceEndpoint:
@@ -555,8 +824,8 @@ Resources:
       SecurityGroupIds: 
         - !GetAtt DBSWorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !Ref DBSClusterSubnet1
+        - !Ref DBSClusterSubnet2
 
   # The KMS CMK for the notebook encryption
   EncryptionKey:
@@ -614,7 +883,11 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - s3:*
+                  - s3:ListBucket
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:PutObjectAcl
                   - sts:*
                   - kinesis:*
                 Resource: '*'
@@ -798,11 +1071,11 @@ Resources:
         - !If
           - CreateFirstSubnetForPrivateLink
           - !Ref DBSPrivateLinkSubnet1
-          - !Ref DBSPrivateSubnet1
+          - !Ref DBSClusterSubnet1
         - !If
           - CreateSecondSubnetForPrivateLink
           - !Ref DBSPrivateLinkSubnet2
-          - !Ref DBSPrivateSubnet2
+          - !Ref DBSClusterSubnet2
       SecurityGroups:
         - !Ref DBSWorkspaceSecurityGroup
 
@@ -821,11 +1094,11 @@ Resources:
         - !If
           - CreateFirstSubnetForPrivateLink
           - !Ref DBSPrivateLinkSubnet1
-          - !Ref DBSPrivateSubnet1
+          - !Ref DBSClusterSubnet1
         - !If
           - CreateSecondSubnetForPrivateLink
           - !Ref DBSPrivateLinkSubnet2
-          - !Ref DBSPrivateSubnet2
+          - !Ref DBSClusterSubnet2
       SecurityGroups:
         - !Ref DBSWorkspaceSecurityGroup
 
@@ -839,8 +1112,8 @@ Resources:
       NetworkName: !Sub ${AWS::StackName}_network
       VpcId: !Ref DBSVpc
       Subnets:
-        - !Ref DBSPrivateSubnet1
-        - !Ref DBSPrivateSubnet2
+        - !Ref DBSClusterSubnet1
+        - !Ref DBSClusterSubnet2
       SecurityGroups:
         - !Ref DBSWorkspaceSecurityGroup
       VpcEndpoints: !If
