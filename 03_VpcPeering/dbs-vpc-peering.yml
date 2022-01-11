@@ -92,11 +92,6 @@ Parameters:
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
     Default: 10.31.8.0/22
 
-  # ExistingBucketInSourceRegion:
-  #   Description: The name of an existing bucket in the source region holding data
-  #   Type: String
-  #   Default: ""
-
   DBSRootBucketName:
     Description: The name of the bucket holding the Databricks workspace data
     Type: String
@@ -172,9 +167,6 @@ Conditions:
 
   CreateDatabricksWorkspace:
     !And [!Equals [!Ref AWS::Region, !Ref WorkspaceRegion], !Not [!Equals [!Ref VpcPeerConnectionId, "" ] ] ]
-
-  # ExistsBucketInSourceRegion:
-  #   !And [!Equals [!Ref AWS::Region, !Ref SourceRegion], !Not [!Equals [!Ref ExistingBucketInSourceRegion, ""] ] ]
 
 #-------------------------------------------------------------------------
 Resources:
@@ -641,11 +633,9 @@ Resources:
   # The private hosted zone for the s3 endoint
   RecordSetForExistingBucket:
     Condition: IsSourceRegion
-    # Condition: ExistsBucketInSourceRegion
     Type: AWS::Route53::RecordSet
     Properties: 
       Name: !Sub "*.s3.${AWS::Region}.amazonaws.com"
-      # Name: !Sub ${ExistingBucketInSourceRegion}.s3.${AWS::Region}.amazonaws.com
       Type: A
       AliasTarget: 
         DNSName: !Select [1, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
