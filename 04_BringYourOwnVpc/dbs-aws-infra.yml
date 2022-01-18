@@ -1,0 +1,802 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Deploying the resources for a Databricks Workspace in a baseline architecture
+
+#-------------------------------------------------------------------------
+Parameters:
+
+  ResourceOwner:
+    Description: The value of the Owner tag in the created resources
+    Type: String
+
+  DBSRootBucketName:
+    Description: The name of the bucket holding the Databricks workspace data
+    Type: String
+    AllowedPattern: '(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)'
+    ConstraintDescription: 3 to 63 characters; must contain only lowercase letters, numbers, periods (.), and dashes (-)
+
+  DBSVPCCidrBlock:
+    Description: The CIDR block of the VPC for the Databricks data plane
+    Type: String
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[6-9]|2[0-3])$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-23
+  
+  DBSNatSubnet1CidrBlock:
+    Description: The CIDR block of the first subnet for the NAT gateway. If left empty no internet connectivity is available
+    Type: String
+    Default: ""
+  
+  DBSNatSubnet2CidrBlock:
+    Description: The CIDR block of the second subnet for the NAT gateway. Specify only for high availability of internet access
+    Type: String
+    Default: ""
+  
+  DBSClusterSubnet1CidrBlock:
+    Description: The CIDR block of the first subnet for the Databricks clusters
+    Type: String
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+  
+  DBSClusterSubnet2CidrBlock:
+    Description: The CIDR block of the second subnet for the Databricks clusters
+    Type: String
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}\\/(1[7-9]|2[0-5])$"
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/17-25
+  
+  DBSPrivateLinkSubnet1CidrBlock:
+    Description: The CIDR block of the first subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the first Databricks cluster subnet
+    Type: String
+    Default: ""
+  
+  DBSPrivateLinkSubnet2CidrBlock:
+    Description: The CIDR block of the second subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the second Databricks cluster subnet
+    Type: String
+    Default: ""
+
+  DBSEncryptionKeyAlias:
+    Description: An alias of a KMS key used for the encryption/decryption of Databricks notebooks
+    Type: String
+    Default: ""
+
+  CreateInstanceProfile:
+    Description: Create an instance profile
+    Type: String
+    AllowedValues:
+      - "yes"
+      - "no"
+    Default: "no"
+
+  DBSAccountId:
+    Description: The Databricks account id. If specified a cross-account role will be created
+    Type: String
+    Default: ""
+
+#-------------------------------------------------------------------------
+Conditions:
+
+  EnablePublicInternetConnectivity:
+    !Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ]
+
+  HighAvailabilityForInternet:
+    !And [!Not [!Equals [!Ref DBSNatSubnet2CidrBlock, ""] ], !Not [!Equals [!Ref DBSNatSubnet1CidrBlock, ""] ] ]
+
+  CreateEncryptionKey:
+    !Not [!Equals [!Ref DBSEncryptionKeyAlias, ""] ]
+
+  EnablePrivateLink:
+    !Or [!Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSPrivateLinkSubnet2CidrBlock, ""] ] ]
+
+  CreateFirstSubnetForPrivateLink:
+    !Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ]
+  
+  CreateSecondSubnetForPrivateLink:
+    !Not [!Equals [!Ref DBSPrivateLinkSubnet2CidrBlock, ""] ]
+  
+  CreateRouteTablesForPrivateLinkSubnetRouteTable:
+    !Or [!Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSPrivateLinkSubnet2CidrBlock, ""] ] ]
+
+  CreateInstanceProfile:
+    !Equals [!Ref CreateInstanceProfile, "yes"]
+
+  CreateCrossAccountRole:
+    !Not [!Equals [!Ref DBSAccountId, ""] ]
+
+#-------------------------------------------------------------------------
+Resources:
+
+  # The root bucket
+  DBSRootBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref DBSRootBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  
+  DBSRootBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DBSRootBucket
+      PolicyDocument:
+        Statement:
+          - Sid: Grant Databricks Access to Root S3
+            Effect: Allow
+            Principal:
+              "AWS": "414351767826"
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !Sub arn:aws:s3:::${DBSRootBucketName}
+              - !Sub arn:aws:s3:::${DBSRootBucketName}/*
+
+  # The VPC
+  DBSVpc:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: !Ref DBSVPCCidrBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksVPC
+
+  # Internet gateway
+  DBSVpcIgw:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::InternetGateway
+    DependsOn: DBSVpc
+    Properties:
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksVpcIgw
+  #... attached to the VPC
+  DBSVpcIgwAttachment:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !GetAtt DBSVpcIgw.InternetGatewayId
+      VpcId: !Ref DBSVpc
+
+  # The subnets and route table for the NAT Gateway
+  DBSNatSubnet1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSNatSubnet1CidrBlock
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNatSubnet1
+  DBSNatSubnet2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSNatSubnet2CidrBlock
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNatSubnet2
+
+  # The two private subnets for the Databricks clusters
+  DBSClusterSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSClusterSubnet1CidrBlock
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksClusterSubnet1
+  DBSClusterSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSClusterSubnet2CidrBlock
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksClusterSubnet2
+
+  # The private subnets for PrivateLink
+  DBSPrivateLinkSubnet1:
+    Condition: CreateFirstSubnetForPrivateLink
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSPrivateLinkSubnet1CidrBlock
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateLinkSubnet1
+  DBSPrivateLinkSubnet2:
+    Condition: CreateSecondSubnetForPrivateLink
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref DBSVpc
+      CidrBlock: !Ref DBSPrivateLinkSubnet2CidrBlock
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateLinkSubnet2
+
+  # The Elastic IPs for the NAT Gateways
+  ElasticIPForNat1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: vpc
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat1ElasticIP
+  ElasticIPForNat2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: vpc
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat2ElasticIP
+  # The NAT gateways
+  DBSNat1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref DBSNatSubnet1
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat1
+  DBSNat2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt ElasticIPForNat1.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref DBSNatSubnet2
+      Tags: 
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNat2
+
+  # The route tables attached to the nat subnets
+  DBSNatRouteTable1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksNatRouteTable1
+  # Routes to the internet
+  RouteToInternetInNatRouteTable1:
+    Condition: EnablePublicInternetConnectivity
+    DependsOn: DBSVpcIgwAttachment
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBSNatRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref DBSVpcIgw
+
+  # Associate the route table to the subnets
+  NatSubnet1RouteTableAssociation:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSNatRouteTable1
+      SubnetId: !Ref DBSNatSubnet1
+  NatSubnet2RouteTableAssociation:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref DBSNatRouteTable1
+      SubnetId: !Ref DBSNatSubnet2
+
+  # The route tables for the private subnets
+  DBSPrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable1
+  RouteToInternetInPrivateRouteTable1:
+    Condition: EnablePublicInternetConnectivity
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBSPrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref DBSNat1
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSPrivateRouteTable1
+      SubnetId: !Ref DBSClusterSubnet1
+  DBSPrivateRouteTable2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateRouteTable2
+  RouteToInternetInPrivateRouteTable2:
+    Condition: HighAvailabilityForInternet
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBSPrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref DBSNat2
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !If [HighAvailabilityForInternet, !Ref DBSPrivateRouteTable2, !Ref DBSPrivateRouteTable1 ]
+      SubnetId: !Ref DBSClusterSubnet2
+
+  # PrivateLink route tables
+  DBSPrivateLinkRouteTable:
+    Condition: CreateRouteTablesForPrivateLinkSubnetRouteTable
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBSVpc
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DatabricksPrivateLinkRouteTable
+  # Associate the route table to the subnets
+  PrivateLinkSubnet1RouteTableAssociation:
+    Condition: CreateFirstSubnetForPrivateLink
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSPrivateLinkRouteTable
+      SubnetId: !Ref DBSPrivateLinkSubnet1
+  PrivateLinkSubnet2RouteTableAssociation:
+    Condition: CreateSecondSubnetForPrivateLink
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DBSPrivateLinkRouteTable
+      SubnetId: !Ref DBSPrivateLinkSubnet2
+
+  # The S3 gateway endpoint
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      VpcId: !Ref DBSVpc
+      RouteTableIds:
+        - !Ref DBSPrivateRouteTable1
+        - !If [HighAvailabilityForInternet, !Ref DBSPrivateRouteTable2, !Ref AWS::NoValue ]
+        - !If [CreateRouteTablesForPrivateLinkSubnetRouteTable, !Ref DBSPrivateLinkRouteTable, !Ref AWS::NoValue ]
+
+  # The security group for the workspace
+  DBSWorkspaceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub ${AWS::StackName}-DBSWorkspaceSG
+      VpcId: !Ref DBSVpc
+      GroupDescription: Allow access from within the same security group
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DBSWorkspaceSG
+  # Allow all access from the same security group
+  DBSWorkspaceSecurityGroupDefaultTcpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      Description: Allow all tcp inbound access from the same security group
+      SourceSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+  DBSWorkspaceSecurityGroupDefaultUdpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      Description: Allow all udp inbound access from the same security group
+      SourceSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+  DBSWorkspaceSecurityGroupDefaultTcpEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      Description: Allow all tcp output access from the same security group
+      DestinationSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+  DBSWorkspaceSecurityGroupDefaultUdpEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      Description: Allow all udp output access from the same security group
+      DestinationSecurityGroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+  DBSWorkspaceSecurityGroupEgressForHttps:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      Description: Allow accessing Databricks infrastructure, cloud data sources, and library repositories
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+  DBSWorkspaceSecurityGroupEgressForMetastore:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      Description: Allow accessing the Databricks metastore
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+  DBSWorkspaceSecurityGroupEgressForPrivateLink:
+    Condition: EnablePrivateLink
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      Description: Allow accessing the Databricks control plane using private link
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 6666
+      ToPort: 6666
+
+  # The STS endpoint
+  STSInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sts
+      VpcEndpointType: Interface
+      VpcId: !Ref DBSVpc
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SubnetIds:
+        - !Ref DBSClusterSubnet1
+        - !Ref DBSClusterSubnet2
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              "AWS": !Ref AWS::AccountId
+            Action:
+              - sts:AssumeRole
+              - sts:GetAccessKeyInfo
+              - sts:GetSessionToken
+              - sts:DecodeAuthorizationMessage
+              - sts:TagSession
+            Resource: "*"
+          - Effect: Allow
+            Principal:
+              "AWS":
+                - arn:aws:iam::414351767826:user/databricks-datasets-readonly-user
+                - "414351767826"
+            Action:
+              - sts:AssumeRole
+              - sts:GetSessionToken
+              - sts:TagSession
+            Resource: "*"
+
+  # The Kinesis endpoint
+  KinesisInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.kinesis-streams
+      VpcEndpointType: Interface
+      VpcId: !Ref DBSVpc
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SubnetIds:
+        - !Ref DBSClusterSubnet1
+        - !Ref DBSClusterSubnet2
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              "AWS":
+                - "414351767826"
+                - !Ref AWS::AccountId
+            Action:
+              - kinesis:PutRecord
+              - kinesis:PutRecords
+              - kinesis:DescribeStream
+            Resource: !Sub arn:aws:kinesis:${AWS::Region}:414351767826:stream/*
+
+  # The KMS CMK for the notebook encryption
+  EncryptionKey:
+    Condition: CreateEncryptionKey
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS Key used by Databricks to encrypt/decrypt the notebooks for a workspace
+      Enabled: true
+      KeyPolicy:
+        Statement:
+          - Sid: Enable Owner Account Permissions
+            Effect: Allow
+            Principal:
+              "AWS": !Ref AWS::AccountId
+            Action: kms:*
+            Resource: "*"
+          - Sid: Allow Databricks to use KMS key for encryption and decryption
+            Effect: Allow
+            Principal:
+              "AWS": "414351767826"
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+            Resource: "*"
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  # The alias for the key
+  EncryptionKeyAlias:
+    Condition: CreateEncryptionKey
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${DBSEncryptionKeyAlias}
+      TargetKeyId: !Ref EncryptionKey
+
+  # The role for the instance profile for the cluster
+  DBSInstanceProfileRole:
+    Condition: CreateInstanceProfile
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-DBSInstanceProfileRole
+      Description: The role used for the instance profile for the by Databricks clusters
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              "Service": ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-DBSInstanceProfilePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:PutObjectAcl
+                  - sts:*
+                  - kinesis:*
+                Resource: '*'
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  # The instance profile
+  DBSInstanceProfile:
+    Condition: CreateInstanceProfile
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub ${AWS::StackName}-DBSInstanceProfile
+      Roles:
+        - !Ref DBSInstanceProfileRole
+
+  # The cross account role for databricks
+  DBSCrossAccountIAMRole:
+    Condition: CreateCrossAccountRole
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-CrossAccountRole
+      Description: The cross-account IAM role used by Databricks to manage resources in the VPC
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              "AWS": "414351767826"
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              "StringEquals":
+                "sts:ExternalId": !Ref DBSAccountId
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-CrossAccountRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: NonResourceBasedPermissions
+                Effect: Allow
+                Action:
+                  - ec2:CancelSpotInstanceRequests
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeIamInstanceProfileAssociations
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeNatGateways
+                  - ec2:DescribeNetworkAcls
+                  - ec2:DescribePrefixLists
+                  - ec2:DescribeReservedInstancesOfferings
+                  - ec2:DescribeRouteTables
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSpotInstanceRequests
+                  - ec2:DescribeSpotPriceHistory
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeVpcAttribute
+                  - ec2:DescribeVpcs
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                  - ec2:RequestSpotInstances
+                  - ec2:RunInstances
+                Resource: '*'
+              - Sid: AllowPassRoleForInstanceProfile
+                Effect: Allow
+                Action: iam:PassRole
+                # Resource: !GetAtt DBSInstanceProfileRole.Arn
+                Resource: '*'
+              - Sid: InstancePoolsSupport
+                Effect: Allow
+                Action:
+                  - ec2:AssociateIamInstanceProfile
+                  - ec2:DisassociateIamInstanceProfile
+                  - ec2:ReplaceIamInstanceProfileAssociation
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Condition:
+                  "StringEquals":
+                    "ec2:ResourceTag/Vendor": "Databricks"
+              - Sid: EC2TerminateInstancesTag
+                Effect: Allow
+                Action: ec2:TerminateInstances
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Condition:
+                  "StringEquals":
+                    "ec2:ResourceTag/Vendor": "Databricks"
+              - Sid: EC2AttachDetachVolumeTag
+                Effect: Allow
+                Action:
+                  - ec2:AttachVolume
+                  - ec2:DetachVolume
+                Resource:
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Condition:
+                  "StringEquals":
+                    "ec2:ResourceTag/Vendor": "Databricks"
+              - Sid: EC2CreateVolumeByTag
+                Effect: Allow
+                Action: ec2:CreateVolume
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Condition:
+                  "StringEquals":
+                    "ec2:ResourceTag/Vendor": "Databricks"
+              - Sid: EC2DeleteVolumeByTag
+                Effect: Allow
+                Action: ec2:DeleteVolume
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Condition:
+                  "StringEquals":
+                    "ec2:ResourceTag/Vendor": "Databricks"
+              - Sid: AllowCreateServiceLinkedRole
+                Effect: Allow
+                Action:
+                  - iam:CreateServiceLinkedRole
+                  - iam:PutRolePolicy
+                Resource: arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot
+                Condition:
+                  "StringLike":
+                    "iam:AWSServiceName": spot.amazonaws.com
+              - Sid: VpcNonresourceSpecificActions
+                Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${DBSWorkspaceSecurityGroup}
+                Condition:
+                  "StringEquals":
+                    "ec2:vpc": !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${DBSVpc}
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+#-------------------------------------------------------------------------
+Outputs:
+
+  Vpc:
+    Description: The VPC Id
+    Value: !Ref DBSVpc
+
+  ClusterSubnet1:
+    Description: The Id of the first private subnet
+    Value: !Ref DBSClusterSubnet1
+
+  ClusterSubnet2:
+    Description: The Id of the second private subnet
+    Value: !Ref DBSClusterSubnet2
+
+  WorkspaceSecurityGroup:
+    Description: The security group needed for the Databricks clusters
+    Value: !Ref DBSWorkspaceSecurityGroup
+
+  PrivateLinkSubnet1:
+    Condition: CreateFirstSubnetForPrivateLink
+    Description: The Id of the first subnet for the PrivateLink endpoint
+    Value: !Ref DBSPrivateLinkSubnet1
+
+  PrivateLinkSubnet2:
+    Condition: CreateSecondSubnetForPrivateLink
+    Description: The Id of the second subnet for the PrivateLink endpoint
+    Value: !Ref DBSPrivateLinkSubnet2
+
+  EncryptionKeyArn:
+    Condition: CreateEncryptionKey
+    Description: The ARN of the KMS key
+    Value: !GetAtt EncryptionKey.Arn
+
+  InstanceProfileArn:
+    Condition: CreateInstanceProfile
+    Description: The ARN of the instance profile for the Databricks cluster
+    Value: !GetAtt DBSInstanceProfile.Arn
+
+  CrossAccountRoleArn:
+    Condition: CreateCrossAccountRole
+    Description: The ARN of the cross-account role for Databricks
+    Value: !GetAtt DBSCrossAccountIAMRole.Arn

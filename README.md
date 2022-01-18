@@ -9,6 +9,9 @@ The folder 01_BaselineArchitecture contains a Cloudformation template which:
 - Creates all the resources in an AWS account (S3 root bucket, VPC and resources therein, an EC2 instance profile and a cross-account IAM role) needed for an AWS deployment
 - Creates the relevant configuration objects in a Databricks account as well as a workspace.
 
+## Bring Your Own VPC
+The folder 04_BringYourOwnVpc contains instructions and a Cloudformation template that demonstrates how to deploy a Databricks workspace in an existing VPC.
+
 ## Setting up a cross-region replicated S3 bucket
 The folder 02_CrossRegionReplicatedBucket contains instructions, scripts and a Cloudformation template in order to create two S3 buckets in different regions, which are cross-replicated, in order to accommodate the use case of a customer with data in a region where the Databricks E2 deployment is not available
 
