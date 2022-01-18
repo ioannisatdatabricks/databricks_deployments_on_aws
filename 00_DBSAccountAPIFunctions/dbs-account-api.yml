@@ -737,7 +737,9 @@ Resources:
                 except: errorMessage = response.reason
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                 return
-              workspaceId = str(json.loads(response.data.decode())['workspace_id'])
+              workspaceObject = json.loads(response.data.decode())
+              workspaceId = str(workspaceObject['workspace_id'])
+              deploymentName = workspaceObject['deployment_name']
               while True:
                 time.sleep(5)
                 try:
@@ -746,7 +748,7 @@ Resources:
                 except Exception as e:
                   print(str(e))
                   break
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, workspaceId)
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {'DeploymentName': deploymentName}, workspaceId)
             else: # 'Delete':
               response = http.request('DELETE', accountsAPIBaseURL + '/workspaces/' + event['PhysicalResourceId'], headers=myHeaders)
               if response.status != 200:
