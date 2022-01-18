@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Deployed the resources for a Databricks Workspace in a baseline architecture
+Description: Deploying the resources for a Databricks Workspace in a baseline architecture
 
 #-------------------------------------------------------------------------
 Parameters:
@@ -1186,6 +1186,14 @@ Resources:
 
 #-------------------------------------------------------------------------
 Outputs:
+
+  DatabricksWorkspaceId:
+    Description: The Id of the Databricks workspace
+    Value: !Ref DatabricksWorkspace
+
+  DatabricksDeploymentName:
+    Description: The name of the Databricks workspace deployment
+    Value: !GetAtt DatabricksWorkspace.DeploymentName
 
   InstanceProfileArn:
     Description: The ARN of the instance profile for the Databricks cluster

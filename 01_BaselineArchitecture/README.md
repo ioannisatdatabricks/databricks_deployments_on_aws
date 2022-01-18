@@ -19,8 +19,8 @@ ParameterKey=ResourceOwner,ParameterValue=<RESOURCE_OWNER> \
 ParameterKey=DBSRootBucketName,ParameterValue=<ROOT_BUCKET_NAME> \
 ParameterKey=DBSVPCCidrBlock,ParameterValue=10.10.0.0/16 \
 ParameterKey=DBSNatSubnet1CidrBlock,ParameterValue=10.10.0.0/25 \
-ParameterKey=DBSPrivateSubnet1CidrBlock,ParameterValue=10.10.4.0/22 \
-ParameterKey=DBSPrivateSubnet2CidrBlock,ParameterValue=10.10.8.0/22 \
+ParameterKey=DBSClusterSubnet1CidrBlock,ParameterValue=10.10.4.0/22 \
+ParameterKey=DBSClusterSubnet2CidrBlock,ParameterValue=10.10.8.0/22 \
 ParameterKey=DBSEncryptionKeyAlias,ParameterValue=databricks-notebook-key \
 ParameterKey=DBSInstanceProfileRoleName,ParameterValue=DatabricksInstanceProfileRole \
 ParameterKey=DBSCrossAccountRoleName,ParameterValue=DatabricksCrossAccountRole \
