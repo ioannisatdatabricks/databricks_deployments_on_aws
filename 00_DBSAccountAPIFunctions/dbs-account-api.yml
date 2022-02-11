@@ -713,17 +713,17 @@ Resources:
               for propertName in ('WorkspaceName', 'CredentialsId', 'StorageId', 'NetworkId'):
                 if checkForMissingProperty(event['ResourceProperties'], propertName): return
               postData = {
-                "aws_region": "${AWS::Region}",
                 "credentials_id": event['ResourceProperties']['CredentialsId'],
-                "storage_configuration_id": event['ResourceProperties']['StorageId'],
                 "network_id": event['ResourceProperties']['NetworkId']
               }
-              if ('ManagedServicesKeyId' in event['ResourceProperties']) and (event['ResourceProperties']['ManagedServicesKeyId'] is not None) and (len(event['ResourceProperties']['ManagedServicesKeyId']) > 0):
-                postData["managed_services_customer_managed_key_id"] = event['ResourceProperties']['ManagedServicesKeyId']
               if ('StorageKeyId' in event['ResourceProperties']) and (event['ResourceProperties']['StorageKeyId'] is not None) and (len(event['ResourceProperties']['StorageKeyId']) > 0):
                 postData["storage_customer_managed_key_id"] = event['ResourceProperties']['StorageKeyId']
               if event['RequestType'] == 'Create':
                 postData["workspace_name"] = event['ResourceProperties']['WorkspaceName']
+                postData["aws_region"] = "${AWS::Region}"
+                postData["storage_configuration_id"] = event['ResourceProperties']['StorageId']
+                if ('ManagedServicesKeyId' in event['ResourceProperties']) and (event['ResourceProperties']['ManagedServicesKeyId'] is not None) and (len(event['ResourceProperties']['ManagedServicesKeyId']) > 0):
+                  postData["managed_services_customer_managed_key_id"] = event['ResourceProperties']['ManagedServicesKeyId']
                 if ('PrivateAccessId' in event['ResourceProperties']) and (event['ResourceProperties']['PrivateAccessId'] is not None) and (len(event['ResourceProperties']['PrivateAccessId']) > 0):
                   postData["private_access_settings_id"] = event['ResourceProperties']['PrivateAccessId']
               response = None
