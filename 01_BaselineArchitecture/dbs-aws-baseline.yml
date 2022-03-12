@@ -1198,3 +1198,11 @@ Outputs:
   InstanceProfileArn:
     Description: The ARN of the instance profile for the Databricks cluster
     Value: !If [ CreateInstanceProfile, !GetAtt DBSInstanceProfile.Arn, !Ref DBSInstanceProfileArn]
+
+  EncryptionKeyArn:
+    Description: The ARN of the encryption key for the notebooks of the workspace
+    Value: !If [ CreateEncryptionKey, !GetAtt EncryptionKey.Arn, !Ref DBSEncryptionKeyArn]
+
+  EncryptionKeyAlias:
+    Description: The alias of the encryption key for the notebooks of the workspace
+    Value: !If [ CreateEncryptionKey, !Ref EncryptionKeyAlias, !Sub "alias/${DBSEncryptionKeyAlias}" ]
