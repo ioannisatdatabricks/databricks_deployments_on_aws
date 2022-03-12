@@ -11,10 +11,46 @@ Parameters:
   ResourcePrefix:
     Description: The prefix for the created resource names
     Type: String
-    Default: DatabricksAccountAPI
+    Default: dbs-account-api
 
   ExistingRoleArnForLambda:
     Description: The ARN of an existing role for the custom resource Lambda functions
+    Type: String
+    Default: ''
+
+  IamRoleExtraTag1Key:
+    Description: Key of the 1st optional extra tag for the Lambda execution IAM role
+    Type: String
+    Default: ''
+  IamRoleExtraTag1Value:
+    Description: Value of the 1st optional extra tag for the Lambda execution IAM role
+    Type: String
+    Default: ''
+
+  IamRoleExtraTag2Key:
+    Description: Key of the 2nd optional extra tag for the Lambda execution IAM role
+    Type: String
+    Default: ''
+  IamRoleExtraTag2Value:
+    Description: Value of the 2nd optional extra tag for the Lambda execution IAM role
+    Type: String
+    Default: ''
+
+  IamRoleExtraTag3Key:
+    Description: Key of the 3rd optional extra tag for the Lambda execution IAM role
+    Type: String
+    Default: ''
+  IamRoleExtraTag3Value:
+    Description: Value of the 3rd optional extra tag for the Lambda execution IAM role
+    Type: String
+    Default: ''
+
+  IamRoleExtraTag4Key:
+    Description: Key of the 4th optional extra tag for the Lambda execution IAM role
+    Type: String
+    Default: ''
+  IamRoleExtraTag4Value:
+    Description: Value of the 4th optional extra tag for the Lambda execution IAM role
     Type: String
     Default: ''
 
@@ -23,6 +59,18 @@ Conditions:
 
   CreateRoleForLambda:
     !Equals [!Ref ExistingRoleArnForLambda, ""]
+
+  CreateOptionalIAMTag1:
+    !And [!Not [!Equals [!Ref IamRoleExtraTag1Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag1Value, ""] ] ]
+
+  CreateOptionalIAMTag2:
+    !And [!Not [!Equals [!Ref IamRoleExtraTag2Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag2Value, ""] ] ]
+
+  CreateOptionalIAMTag3:
+    !And [!Not [!Equals [!Ref IamRoleExtraTag3Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag3Value, ""] ] ]
+
+  CreateOptionalIAMTag4:
+    !And [!Not [!Equals [!Ref IamRoleExtraTag4Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag4Value, ""] ] ]
 
 #-------------------------------------------------------------------------
 Mappings:
@@ -206,7 +254,26 @@ Resources:
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-
+        - !If
+          - CreateOptionalIAMTag1
+          - Key: !Ref IamRoleExtraTag1Key
+            Value: !Ref IamRoleExtraTag1Value
+          - !Ref AWS::NoValue
+        - !If
+          - CreateOptionalIAMTag2
+          - Key: !Ref IamRoleExtraTag2Key
+            Value: !Ref IamRoleExtraTag2Value
+          - !Ref AWS::NoValue
+        - !If
+          - CreateOptionalIAMTag3
+          - Key: !Ref IamRoleExtraTag3Key
+            Value: !Ref IamRoleExtraTag3Value
+          - !Ref AWS::NoValue
+        - !If
+          - CreateOptionalIAMTag4
+          - Key: !Ref IamRoleExtraTag4Key
+            Value: !Ref IamRoleExtraTag4Value
+          - !Ref AWS::NoValue
 
   # Databricks Addresses
   DatabricksAddressesFn:
