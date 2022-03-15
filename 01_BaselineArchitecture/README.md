@@ -49,11 +49,11 @@ ParameterKey=DBSFirewallSubnet2CidrBlock,ParameterValue=10.10.1.128/25 \
 - Associate the VPC to the private hosted zone
 - Create an alias A record for the workspace URL targeting the PrivateLink workspace VPC endpoint.
 
-### Set up SSH tunneling
+### Set up SSH tunnelling
 - Create an EC2 RSA key for ssh connectivity
 - Create a security group allowing incoming connections to port 22 (SSH)
 - Launch a micro instance on EC2 on the public subnet (where the NAT Gateway is attached to)specifying the two security groups (the one with the SSH connectivity and the one used for the clusters and the VPC endpoints)
-- From the local machine run ssh -N -i <key>.pem -D 9090 ec2-user@<EC2_PUBLIC_DNS_NAME>
+- From the local machine run: ssh -N -i <key>.pem -D 9090 ec2-user@<EC2_PUBLIC_DNS_NAME>
 
 ### Configure SOCKS on Firefox and access the workspace
 - In the upper right-hand corner, click on the hamburger icon ☰ to open Firefox’s menu:
