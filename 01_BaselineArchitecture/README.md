@@ -40,3 +40,27 @@ ParameterKey=DBSPrivateLinkSubnet2CidrBlock,ParameterValue=10.10.2.128/25 \
 ParameterKey=DBSNatSubnet2CidrBlock,ParameterValue=10.10.0.128/25 \
 #### If a firewall is enabled then this one needs to be set up as well:
 ParameterKey=DBSFirewallSubnet2CidrBlock,ParameterValue=10.10.1.128/25 \
+
+
+## Testing connectivity to a PrivateLink-enabled workspace with public access disabled.
+
+### Set up private DNS
+- Create a private hosted zone for cloud.databricks.com
+- Associate the VPC to the private hosted zone
+- Create an alias A record for the workspace URL targeting the PrivateLink workspace VPC endpoint.
+
+### Set up SSH tunneling
+- Create an EC2 RSA key for ssh connectivity
+- Create a security group allowing incoming connections to port 22 (SSH)
+- Launch a micro instance on EC2 on the public subnet (where the NAT Gateway is attached to)specifying the two security groups (the one with the SSH connectivity and the one used for the clusters and the VPC endpoints)
+- From the local machine run ssh -N -i <key>.pem -D 9090 ec2-user@<EC2_PUBLIC_DNS_NAME>
+
+### Configure SOCKS on Firefox and access the workspace
+- In the upper right-hand corner, click on the hamburger icon ☰ to open Firefox’s menu:
+- Click on the ⚙ Preferences link.
+- Scroll down to the Network Settings section and click on the Settings... button.
+- Select the Manual proxy configuration radio button.
+- Enter 127.0.0.1 in the SOCKS Host field and 9090 in the Port field.
+- Check the Proxy DNS when using SOCKS v5 checkbox.
+- Click on the OK button to save the settings.
+- Type the workspace URL to access it.
