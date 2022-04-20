@@ -1195,6 +1195,27 @@ Outputs:
     Description: The name of the Databricks workspace deployment
     Value: !GetAtt DatabricksWorkspace.DeploymentName
 
+  PrivateAccessId:
+    Condition: EnablePrivateLink
+    Description: The private access configuration id
+    Value: !Ref PrivateAccessConfiguration
+
+  ManagedServicesKeyId:
+    Description: The CMK Id for managed services
+    Value: !Ref DBSManagedKeysConfiguration
+
+  NetworkId:
+    Description: The network configuration Id
+    Value: !Ref DBSNetworkConfiguration
+  
+  StorageId:
+    Description: The storage configuration Id
+    Value: !Ref DBSStorageConfiguration
+
+  CredentialsId:
+    Description: The credentials configuration Id
+    Value: !Ref DBSCredentialsConfiguration
+
   InstanceProfileArn:
     Description: The ARN of the instance profile for the Databricks cluster
     Value: !If [ CreateInstanceProfile, !GetAtt DBSInstanceProfile.Arn, !Ref DBSInstanceProfileArn]
