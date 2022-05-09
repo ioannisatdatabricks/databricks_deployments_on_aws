@@ -146,6 +146,9 @@ Conditions:
   CreateRouteTablesForPrivateLinkSubnetRouteTable:
     !And [!Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ], !Or [!Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSPrivateLinkSubnet2CidrBlock, ""] ] ] ]
 
+  SetupPrivateAccessForFrontend:
+    !Equals [!Ref DBSPrivateLinkMode, "PublicAccessDisabled"]
+
 #-------------------------------------------------------------------------
 Resources:
 
@@ -1183,6 +1186,61 @@ Resources:
       ManagedServicesKeyId: !Ref DBSManagedKeysConfiguration
       PrivateAccessId: !If [ EnablePrivateLink, !Ref PrivateAccessConfiguration, !Ref AWS::NoValue ]
 
+
+  #------ Resources for accessing the Databricks workspace in case of private access to the frontend
+
+  # The private DNS setup for private link
+  PrivateDNSZone:
+    Condition: SetupPrivateAccessForFrontend
+    Type: AWS::Route53::HostedZone
+    Properties: 
+      Name: cloud.databricks.com
+      HostedZoneConfig:
+          Comment: Private hosted zone to support private access to the Databricks workspace frontend
+      VPCs:
+        - VPCId: !Ref DBSVpc
+          VPCRegion: !Ref AWS::Region
+      HostedZoneTags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The private hosted zone for the workspace endpoint
+  RecordSetForPrivateHostedZoneForPrivateLink:
+    Condition: SetupPrivateAccessForFrontend
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      Name: !Sub ${DatabricksWorkspace.DeploymentName}.cloud.databricks.com
+      Type: A
+      AliasTarget: 
+        DNSName: !GetAtt WorkspaceVpcEnpoint.DnsName
+        HostedZoneId: !GetAtt WorkspaceVpcEnpoint.HostedZoneId
+      Comment: Points to the VPC endpoint for the Databricks workspace
+      HostedZoneId: !Ref PrivateDNSZone
+
+  # The security group needed to set up ssh tunnelling
+  SshSecurityGroup:
+    Condition: SetupPrivateAccessForFrontend
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub ${AWS::StackName}-SshTunnelling-SG
+      VpcId: !Ref DBSVpc
+      GroupDescription: Allow incoming ssh connections from the internet
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-SshTunnelling-SG
+  # Allow all access from the same security group
+  SshSecurityGroupIngressRule:
+    Condition: SetupPrivateAccessForFrontend
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt SshSecurityGroup.GroupId
+      Description: Allow all ssh inbound access from the internet
+      CidrIp: 0.0.0.0/0
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
 
 #-------------------------------------------------------------------------
 Outputs:

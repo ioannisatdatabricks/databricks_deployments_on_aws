@@ -453,12 +453,20 @@ Resources:
                   time.sleep(5)
                 except Exception as e: break
             def waitForEndpoint(vpcEndpointId):
+              dnsName = None
+              hostedZoneId = None
               while True: # Wait for the endpoint to become available
                 try:
-                  status = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]['State']
-                  if status == 'available': break
+                  vpcEndpointInfo = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]
+                  if vpcEndpointInfo['State'] == 'available':
+                    if vpcEndpointInfo['PrivateDnsEnabled'] == True:
+                      dnsEntryInfo = vpcEndpointInfo['DnsEntries'][0]
+                      dnsName = dnsEntryInfo['DnsName']
+                      hostedZoneId = dnsEntryInfo['HostedZoneId']
+                    break
                 except Exception as e: print(str(e))
                 time.sleep(5)
+              return (dnsName, hostedZoneId)
             def checkForMissingProperty(properties, propertyName):
               if propertyName not in properties:
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -498,7 +506,7 @@ Resources:
                   cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                   return
                 dbsVpcEndpointId = json.loads(response.data.decode())['vpc_endpoint_id']
-                waitForEndpoint(vpcEndpointId)
+                _ = waitForEndpoint(vpcEndpointId)
                 try:
                   ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
                 except Exception as e:
@@ -507,8 +515,8 @@ Resources:
                   except: pass
                   cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
                   return
-                waitForEndpoint(vpcEndpointId)
-                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
+                (dnsName, hostedZoneId) = waitForEndpoint(vpcEndpointId)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {'DnsName': dnsName,'HostedZoneId':hostedZoneId}, dbsVpcEndpointId)
               else: # 'Delete':
                 response = http.request('GET', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
                 if response.status != 200:

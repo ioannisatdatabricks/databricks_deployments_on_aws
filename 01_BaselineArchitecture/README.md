@@ -43,16 +43,15 @@ ParameterKey=DBSFirewallSubnet2CidrBlock,ParameterValue=10.10.1.128/25 \
 
 
 ## Testing connectivity to a PrivateLink-enabled workspace with public access disabled.
-
-### Set up private DNS
-- Create a private hosted zone for cloud.databricks.com
-- Associate the VPC to the private hosted zone
-- Create an alias A record for the workspace URL targeting the PrivateLink workspace VPC endpoint.
+In case PrivateLink is set up with private frontend connectivity, then the CloudFormation script
+- Creates a private hosted zone for cloud.databricks.com
+- Associates the VPC to the private hosted zone
+- Creates an alias A record for the workspace URL targeting the PrivateLink workspace VPC endpoint.
+- Creates a security group allowing incoming connections to port 22 (SSH)
 
 ### Set up SSH tunnelling
 - Create an EC2 RSA key for ssh connectivity.
 - Download the <key>.pem file on your computer and run: chmod 400 <key>.pem
-- Create a security group allowing incoming connections to port 22 (SSH)
 - Launch a micro instance on EC2 on the public subnet (where the NAT Gateway is attached to)specifying the two security groups (the one with the SSH connectivity and the one used for the clusters and the VPC endpoints)
 - From the local machine run: ssh -N -i <key>.pem -D 9090 ec2-user@<EC2_PUBLIC_DNS_NAME>
 
