@@ -625,8 +625,8 @@ Resources:
       Name: !Sub s3.${AWS::Region}.amazonaws.com
       Type: A
       AliasTarget: 
-        DNSName: !Select [1, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
-        HostedZoneId: !Select [0, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+        DNSName: !Select [1, !Split [":", !Select [0, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+        HostedZoneId: !Select [0, !Split [":", !Select [0, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
       Comment: Points to the VPC endpoint
       HostedZoneId: !Ref PrivateHostedZoneForS3Endoint
 
@@ -638,8 +638,8 @@ Resources:
       Name: !Sub "*.s3.${AWS::Region}.amazonaws.com"
       Type: A
       AliasTarget: 
-        DNSName: !Select [1, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
-        HostedZoneId: !Select [0, !Split [":", !Select [1, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+        DNSName: !Select [1, !Split [":", !Select [0, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
+        HostedZoneId: !Select [0, !Split [":", !Select [0, !GetAtt S3InterfaceEndpoint.DnsEntries] ] ]
       Comment: Points to the VPC endpoint
       HostedZoneId: !Ref PrivateHostedZoneForS3Endoint
 

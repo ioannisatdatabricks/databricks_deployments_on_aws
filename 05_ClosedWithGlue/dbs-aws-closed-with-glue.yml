@@ -309,24 +309,6 @@ Resources:
       IpProtocol: tcp
       FromPort: 443
       ToPort: 443
-  DBSWorkspaceSecurityGroupEgressForMySQL:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
-      Description: Allow accessing the metastore
-      CidrIp: 0.0.0.0/0
-      IpProtocol: tcp
-      FromPort: 3306
-      ToPort: 3306
-  DBSWorkspaceSecurityGroupEgressForPrivateLink:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
-      Description: Allow accessing the Databricks control plane using private link
-      CidrIp: 0.0.0.0/0
-      IpProtocol: tcp
-      FromPort: 6666
-      ToPort: 6666
 
   # The S3 gateway endpoint
   S3GatewayEndpoint:
@@ -350,8 +332,8 @@ Resources:
       SecurityGroupIds:
         - !GetAtt DBSWorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSClusterSubnet1
-        - !Ref DBSClusterSubnet2
+        - !Ref DBSPrivateLinkSubnet1
+        - !Ref DBSPrivateLinkSubnet2
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -386,8 +368,8 @@ Resources:
       SecurityGroupIds:
         - !GetAtt DBSWorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSClusterSubnet1
-        - !Ref DBSClusterSubnet2
+        - !Ref DBSPrivateLinkSubnet1
+        - !Ref DBSPrivateLinkSubnet2
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -412,8 +394,8 @@ Resources:
       SecurityGroupIds:
         - !GetAtt DBSWorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSClusterSubnet1
-        - !Ref DBSClusterSubnet2
+        - !Ref DBSPrivateLinkSubnet1
+        - !Ref DBSPrivateLinkSubnet2
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -607,7 +589,7 @@ Resources:
               - Sid: AllowPassRoleForInstanceProfile
                 Effect: Allow
                 Action: iam:PassRole
-                Resource: !If [ CreateInstanceProfile, !GetAtt DBSInstanceProfile.Arn, !Ref DBSInstanceProfileArn]
+                Resource: '*'
               - Sid: InstancePoolsSupport
                 Effect: Allow
                 Action:

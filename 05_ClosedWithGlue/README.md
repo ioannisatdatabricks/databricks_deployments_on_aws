@@ -26,10 +26,10 @@ ParameterKey=DBSAccountId,ParameterValue=<DATABRICKS_ACCOUNT_ID> \
 ParameterKey=DBSUsername,ParameterValue=<DATABRICKS_USER_NAME> \
 ParameterKey=DBSPassword,ParameterValue=<DATABRICKS_PASSWORD>
 
-# Use of a existing instance profile
+### Use of a existing instance profile
 ParameterKey=DBSInstanceProfileArn,ParameterValue=<INSTANCE_PROFILE_ROLE_ARN> \
 
-# Use of existing cross-account role
+### Use of existing cross-account role
 ParameterKey=DBSCrossAccountRoleArn,ParameterValue=<CROSS_ACCOUNT_ROLE_ARN> \
 
 ### Additional parameters for using KMS to encrypt the notebooks
@@ -38,3 +38,5 @@ ParameterKey=DBSEncryptionKeyArn,ParameterValue=<ENCRYPTION_KEY_ARN> \
 ### Optional: existing alias for the key (without the "alias/" prefix)
 ParameterKey=DBSEncryptionKeyAlias,ParameterValue=<ENCRYPTION_KEY_ALIAS> \
 
+## Spark configuration
+spark.databricks.hive.metastore.glueCatalog.enabled true

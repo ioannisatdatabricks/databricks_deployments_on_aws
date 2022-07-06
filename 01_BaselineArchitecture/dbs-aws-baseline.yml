@@ -791,16 +791,6 @@ Resources:
       IpProtocol: tcp
       FromPort: 3306
       ToPort: 3306
-  DBSWorkspaceSecurityGroupEgressForPrivateLink:
-    Condition: EnablePrivateLink
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !GetAtt DBSWorkspaceSecurityGroup.GroupId
-      Description: Allow accessing the Databricks control plane using private link
-      CidrIp: 0.0.0.0/0
-      IpProtocol: tcp
-      FromPort: 6666
-      ToPort: 6666
 
   # The STS endpoint
   STSInterfaceEndpoint:
