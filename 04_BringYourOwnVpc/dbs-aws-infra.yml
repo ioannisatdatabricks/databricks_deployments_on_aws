@@ -51,6 +51,14 @@ Parameters:
     Description: The CIDR block of the second subnet for the Databricks PrivateLink endpointsdata plane. If not specified this will default to the second Databricks cluster subnet
     Type: String
     Default: ""
+  
+  CreatePrivateLinkEndpoints:
+    Description: Flag if the private link endpoints should be created
+    Type: String
+    AllowedValues:
+      - "yes"
+      - "no"
+    Default: "no"
 
   DBSEncryptionKeyAlias:
     Description: An alias of a KMS key used for the encryption/decryption of Databricks notebooks
@@ -83,7 +91,7 @@ Conditions:
     !Not [!Equals [!Ref DBSEncryptionKeyAlias, ""] ]
 
   EnablePrivateLink:
-    !Or [!Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ], !Not [!Equals [!Ref DBSPrivateLinkSubnet2CidrBlock, ""] ] ]
+    !Equals [!Ref CreatePrivateLinkEndpoints, "yes"]
 
   CreateFirstSubnetForPrivateLink:
     !Not [!Equals [!Ref DBSPrivateLinkSubnet1CidrBlock, ""] ]
@@ -832,6 +840,16 @@ Outputs:
   ClusterSubnet2:
     Description: The Id of the second private subnet
     Value: !Ref DBSClusterSubnet2
+
+  PrivateLinkSubnet1:
+    Condition: CreateFirstSubnetForPrivateLink
+    Description: The Id of the first subnet for VPC endpoints
+    Value: !Ref DBSPrivateLinkSubnet1
+
+  PrivateLinkSubnet2:
+    Condition: CreateSecondSubnetForPrivateLink
+    Description: The Id of the first subnet for VPC endpoints
+    Value: !Ref DBSPrivateLinkSubnet2
 
   WorkspaceSecurityGroup:
     Description: The security group needed for the Databricks clusters

@@ -36,6 +36,8 @@ ParameterKey=DBSNatSubnet2CidrBlock,ParameterValue=10.10.0.128/25 \
 ParameterKey=DBSPrivateLinkSubnet1CidrBlock,ParameterValue=10.10.2.0/25 \
 ParameterKey=DBSPrivateLinkSubnet2CidrBlock,ParameterValue=10.10.2.128/25 \
 
+### Additional parameter to create the PrivateLink VPC endpoints:
+ParameterKey=CreatePrivateLinkEndpoints,ParameterValue=yes \
 
 ## Example using the AWS CLI to create the workspace using existing AWS resources
 aws --region eu-west-1 \
