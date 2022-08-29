@@ -40,7 +40,7 @@ Resources:
       Username: String - The Databricks user name
       Password: !Ref DBSPassword
       EndpointName: String - The human-friendly name of the network object
-      Service: String - Workspace or Backend
+      VpcEndpointId: String - The AWS VPC Endpoint Id
       VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
       Subnets:
         - String - The AWS Id of the first private subnet in the above VPC

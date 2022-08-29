@@ -66,3 +66,5 @@ ParameterKey=DBSEncryptionKeyAlias,ParameterValue=<ENCRYPTION_KEY_ALIAS> \
 ParameterKey=DBSPrivateLinkMode,ParameterValue=PublicAccessEnabled \
 ParameterKey=PrivateLinkSubnetId1,ParameterValue=<PRIVATELINK_SUBNET_ID_1> \
 ParameterKey=PrivateLinkSubnetId2,ParameterValue=<PRIVATELINK_SUBNET_ID_2> \
+ParameterKey=RelayInterfaceEndpointId,ParameterValue=<SCC_RELAY_VPC_ENDPOINT_ID> \
+ParameterKey=RestApiInterfaceEndpointId,ParameterValue=<REST_VPC_ENDPOINT_ID> \

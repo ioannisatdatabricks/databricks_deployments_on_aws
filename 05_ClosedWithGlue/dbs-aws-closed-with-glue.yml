@@ -103,6 +103,12 @@ Conditions:
 #-------------------------------------------------------------------------
 Resources:
 
+  # The databricks addresses
+  DatabricksAddresses:
+    Type: Custom::DatabricksAddresses
+    Properties:
+      ServiceToken: !ImportValue dbs-account-api-DatabricksAddressesFn-Arn
+
   # The root bucket
   DBSRootBucket:
     Type: AWS::S3::Bucket
@@ -140,8 +146,8 @@ Resources:
               - s3:ListBucket
               - s3:GetBucketLocation
             Resource:
-              - !Sub arn:aws:s3:::${DBSRootBucketName}
-              - !Sub arn:aws:s3:::${DBSRootBucketName}/*
+              - !Sub arn:${AWS::Partition}:s3:::${DBSRootBucketName}
+              - !Sub arn:${AWS::Partition}:s3:::${DBSRootBucketName}/*
 
   # The VPC
   DBSVpc:
@@ -381,7 +387,35 @@ Resources:
               - kinesis:PutRecord
               - kinesis:PutRecords
               - kinesis:DescribeStream
-            Resource: !Sub arn:aws:kinesis:${AWS::Region}:414351767826:stream/*
+            Resource: !Sub arn:${AWS::Partition}:kinesis:${AWS::Region}:414351767826:stream/*
+
+  # The Databricks REST API endpoint
+  DBSRestApiInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: !GetAtt DatabricksAddresses.Workspace
+      VpcEndpointType: Interface
+      VpcId: !Ref DBSVpc
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SubnetIds:
+        - !Ref DBSPrivateLinkSubnet1
+        - !Ref DBSPrivateLinkSubnet2
+
+  # The Databricks REST API endpoint
+  DBSRelayInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: !GetAtt DatabricksAddresses.Backend
+      VpcEndpointType: Interface
+      VpcId: !Ref DBSVpc
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SubnetIds:
+        - !Ref DBSPrivateLinkSubnet1
+        - !Ref DBSPrivateLinkSubnet2
 
   # The Glue endpoint
   GlueInterfaceEndpoint:
@@ -427,10 +461,10 @@ Resources:
               - glue:UpdateTable
               - glue:UpdateUserDefinedFunction
             Resource:
-              - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
-              - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/*
-              - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/*/*
-              - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:userDefinedFunction/*/*
+              - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog
+              - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/*
+              - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/*/*
+              - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:userDefinedFunction/*/*
 
   # The KMS CMK for the notebook encryption
   EncryptionKey:
@@ -521,10 +555,10 @@ Resources:
                   - glue:UpdateTable
                   - glue:UpdateUserDefinedFunction
                 Resource:
-                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
-                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/*
-                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/*/*
-                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:userDefinedFunction/*/*
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/*
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/*/*
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:userDefinedFunction/*/*
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -596,14 +630,14 @@ Resources:
                   - ec2:AssociateIamInstanceProfile
                   - ec2:DisassociateIamInstanceProfile
                   - ec2:ReplaceIamInstanceProfileAssociation
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2TerminateInstancesTag
                 Effect: Allow
                 Action: ec2:TerminateInstances
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
@@ -613,22 +647,22 @@ Resources:
                   - ec2:AttachVolume
                   - ec2:DetachVolume
                 Resource:
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2CreateVolumeByTag
                 Effect: Allow
                 Action: ec2:CreateVolume
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2DeleteVolumeByTag
                 Effect: Allow
                 Action: ec2:DeleteVolume
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
@@ -648,10 +682,10 @@ Resources:
                   - ec2:AuthorizeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupEgress
                   - ec2:RevokeSecurityGroupIngress
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${DBSWorkspaceSecurityGroup}
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${DBSWorkspaceSecurityGroup}
                 Condition:
                   "StringEquals":
-                    "ec2:vpc": !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${DBSVpc}
+                    "ec2:vpc": !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${DBSVpc}
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -689,6 +723,7 @@ Resources:
       UseCases:
         - MANAGED_SERVICES
 
+
   WorkspaceVpcEnpoint:
     Type: Custom::WorkspaceVpcEnpoint
     Properties:
@@ -697,7 +732,7 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
-      Service: Workspace
+      VpcEndpointId: !Ref DBSRestApiInterfaceEndpoint
       VpcId: !Ref DBSVpc
       Subnets:
         - !Ref DBSPrivateLinkSubnet1
@@ -713,7 +748,7 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
-      Service: Backend
+      VpcEndpointId: !Ref DBSRelayInterfaceEndpoint
       VpcId: !Ref DBSVpc
       Subnets:
         - !Ref DBSPrivateLinkSubnet1

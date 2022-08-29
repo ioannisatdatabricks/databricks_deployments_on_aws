@@ -39,6 +39,16 @@ Parameters:
       - "PublicAccessDisabled"
     Default: "Off"
 
+  RelayInterfaceEndpointId:
+    Description: The Id of the VPC Endpoint for the Databricks SCC Relay
+    Type: String
+    Default: ''
+
+  RestApiInterfaceEndpointId:
+    Description: The Id of the VPC Endpoint for the Databricks REST API
+    Type: String
+    Default: ''
+
   PrivateLinkSubnetId1:
     Description: The Id of the VPC subnet for the PrivateLink endpoint in the first availability zone
     Type: String
@@ -84,16 +94,32 @@ Conditions:
     !Equals [!Ref DBSCrossAccountRoleArn, ""]
 
   EnablePrivateLink:
-    !And [ !Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ], !Not [!Equals [!Ref PrivateLinkSubnetId1, ""] ], !Not [!Equals [!Ref PrivateLinkSubnetId2, ""] ] ]
-  
+    !Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ]
+
   PublicAccessForPrivateLink:
     !Equals [!Ref DBSPrivateLinkMode, "PublicAccessEnabled"]
-  
+
+  ExistsFirstSubnetForPrivateLink:
+    !Not [!Equals [!Ref PrivateLinkSubnetId1, ""] ]
+
+  ExistsSecondSubnetForPrivateLink:
+    !Not [!Equals [!Ref PrivateLinkSubnetId2, ""] ]
+
   UseEncryptionKey:
     !Not [!Equals [!Ref DBSEncryptionKeyArn, ""] ]
   
   ExistsEncryptionKeyAlias:
     !Not [!Equals [!Ref DBSEncryptionKeyAlias, ""] ]
+
+#-------------------------------------------------------------------------
+Rules:
+
+  VpcEndpointsForPrivateLink:
+    RuleCondition: !Not [!Equals [!Ref DBSPrivateLinkMode, "Off"] ]
+    Assertions:
+      - Assert: !And [ !Not [!Equals [!Ref RelayInterfaceEndpointId, ""] ], !Not [!Equals [!Ref RestApiInterfaceEndpointId, ""] ] ]
+        AssertDescription: Both VPC endpoint Ids for private link need to be specified
+
 
 #-------------------------------------------------------------------------
 Resources:
@@ -164,14 +190,14 @@ Resources:
                   - ec2:AssociateIamInstanceProfile
                   - ec2:DisassociateIamInstanceProfile
                   - ec2:ReplaceIamInstanceProfileAssociation
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2TerminateInstancesTag
                 Effect: Allow
                 Action: ec2:TerminateInstances
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
@@ -181,22 +207,22 @@ Resources:
                   - ec2:AttachVolume
                   - ec2:DetachVolume
                 Resource:
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2CreateVolumeByTag
                 Effect: Allow
                 Action: ec2:CreateVolume
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2DeleteVolumeByTag
                 Effect: Allow
                 Action: ec2:DeleteVolume
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
@@ -216,10 +242,10 @@ Resources:
                   - ec2:AuthorizeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupEgress
                   - ec2:RevokeSecurityGroupIngress
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${WorkspaceSecurityGroupId}
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${WorkspaceSecurityGroupId}
                 Condition:
                   "StringEquals":
-                    "ec2:vpc": !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${VpcId}
+                    "ec2:vpc": !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${VpcId}
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -267,11 +293,17 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
-      Service: Workspace
+      VpcEndpointId: !Ref RestApiInterfaceEndpointId
       VpcId: !Ref VpcId
       Subnets:
-        - !Ref PrivateLinkSubnetId1
-        - !Ref PrivateLinkSubnetId2
+        - !If
+          - ExistsFirstSubnetForPrivateLink
+          - !Ref PrivateLinkSubnetId1
+          - !Ref ClusterSubnetId1
+        - !If
+          - ExistsSecondSubnetForPrivateLink
+          - !Ref PrivateLinkSubnetId2
+          - !Ref ClusterSubnetId2
       SecurityGroups:
         - !Ref WorkspaceSecurityGroupId
 
@@ -284,11 +316,17 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
-      Service: Backend
+      VpcEndpointId: !Ref RelayInterfaceEndpointId
       VpcId: !Ref VpcId
       Subnets:
-        - !Ref PrivateLinkSubnetId1
-        - !Ref PrivateLinkSubnetId2
+        - !If
+          - ExistsFirstSubnetForPrivateLink
+          - !Ref PrivateLinkSubnetId1
+          - !Ref ClusterSubnetId1
+        - !If
+          - ExistsSecondSubnetForPrivateLink
+          - !Ref PrivateLinkSubnetId2
+          - !Ref ClusterSubnetId2
       SecurityGroups:
         - !Ref WorkspaceSecurityGroupId
 

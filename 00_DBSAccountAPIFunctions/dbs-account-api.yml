@@ -193,64 +193,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - arn:aws:logs:*:*:log-group:/aws/lambda/*:log-stream:*
-              - Sid: AllowEndpointCreation
-                Effect: Allow
-                Action: ec2:CreateVpcEndpoint
-                Resource:
-                  - arn:aws:ec2:*:*:vpc/*
-                  - arn:aws:ec2:*:*:security-group/*
-                  - arn:aws:ec2:*:*:subnet/*
-              - Sid: RestrictEndpointCreation
-                Effect: Allow
-                Action:
-                  - ec2:CreateVpcEndpoint
-                  - ec2:CreateTags
-                  - ec2:DeleteVpcEndpoints
-                Resource: 'arn:aws:ec2:*:*:vpc-endpoint/*'
-                Condition:
-                  "StringEquals":
-                    "ec2:VpceServiceName":
-                      - com.amazonaws.vpce.us-east-1.vpce-svc-09143d1e626de2f04
-                      - com.amazonaws.vpce.us-east-1.vpce-svc-00018a8c3ff62ffdf
-                      - com.amazonaws.vpce.us-east-2.vpce-svc-041dc2b4d7796b8d3
-                      - com.amazonaws.vpce.us-east-2.vpce-svc-090a8fab0d73e39a6
-                      - com.amazonaws.vpce.us-west-2.vpce-svc-0129f463fcfbc46c5
-                      - com.amazonaws.vpce.us-west-2.vpce-svc-0158114c0c730c3bb
-                      - com.amazonaws.vpce.eu-west-1.vpce-svc-0da6ebf1461278016
-                      - com.amazonaws.vpce.eu-west-1.vpce-svc-09b4eb2bc775f4e8c
-                      - com.amazonaws.vpce.eu-west-2.vpce-svc-01148c7cdc1d1326c
-                      - com.amazonaws.vpce.eu-west-2.vpce-svc-05279412bf5353a45
-                      - com.amazonaws.vpce.eu-central-1.vpce-svc-081f78503812597f7
-                      - com.amazonaws.vpce.eu-central-1.vpce-svc-08e5dfca9572c85c4
-                      - com.amazonaws.vpce.ap-southeast-1.vpce-svc-02535b257fc253ff4
-                      - com.amazonaws.vpce.ap-southeast-1.vpce-svc-0557367c6fc1a0c5c
-                      - com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b87155ddd6954974
-                      - com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b4a72e8f825495f6
-                      - com.amazonaws.vpce.ap-northeast-1.vpce-svc-02691fd610d24fd64
-                      - com.amazonaws.vpce.ap-northeast-1.vpce-svc-02aa633bda3edbec0
-                      - com.amazonaws.vpce.ap-south-1.vpce-svc-0dbfe5d9ee18d6411
-                      - com.amazonaws.vpce.ap-south-1.vpce-svc-03fd4d9b61414f3de
-                      - com.amazonaws.vpce.ca-central-1.vpce-svc-0205f197ec0e28d65
-                      - com.amazonaws.vpce.ca-central-1.vpce-svc-0c4e25bdbcbfbb684
-              - Sid: AllowEndpointModification
-                Effect: Allow
-                Action: ec2:ModifyVpcEndpoint
-                Resource:
-                  - arn:aws:ec2:*:*:vpc-endpoint/*
-              - Sid: AllowDescribes
-                Effect: Allow
-                Action:
-                  - ec2:DescribeVpcEndpoints
-                  - ec2:DescribeVpcs
-                Resource: '*'
-              - Sid: AllowVPCAssociationWithHostedZone
-                Effect: Allow
-                Action:
-                  - route53:AssociateVPCWithHostedZone
-                  - route53:DisassociateVPCFromHostedZone
-                Resource:
-                  - arn:aws:route53:::hostedzone/*
-                  - arn:aws:ec2:*:*:vpc/*
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -291,12 +233,14 @@ Resources:
           - |
             import cfnresponse, socket
             def lambda_handler(event, context):
-              attributes = {} if event['RequestType'] == 'Delete' else {"Webapp" : "${webapp}", "SCCRelay" : "${sccrelay}", "Metastore" : "${rds}", "MetastoreIP" : socket.gethostbyname("${rds}"), "ControlPlane" : "${controlplane}"}
+              attributes = {} if event['RequestType'] == 'Delete' else {"Workspace": "${workspace}", "Backend": "${backend}", "Webapp" : "${webapp}", "SCCRelay" : "${sccrelay}", "Metastore" : "${rds}", "MetastoreIP" : socket.gethostbyname("${rds}"), "ControlPlane" : "${controlplane}"}
               cfnresponse.send(event, context, cfnresponse.SUCCESS, attributes)
           - webapp: !FindInMap [DatabricksAddresses, !Ref AWS::Region, webapp]
             sccrelay: !FindInMap [DatabricksAddresses, !Ref AWS::Region, sccrelay]
             rds: !FindInMap [DatabricksAddresses, !Ref AWS::Region, rds]
             controlplane: !FindInMap [DatabricksAddresses, !Ref AWS::Region, controlplane]
+            workspace: !FindInMap [DatabricksAddresses, !Ref AWS::Region, workspace]
+            backend: !FindInMap [DatabricksAddresses, !Ref AWS::Region, backend]
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -441,32 +385,9 @@ Resources:
       Runtime: python3.9
       Timeout: 600
       Code:
-        ZipFile: !Sub 
-          - |
-            import cfnresponse, urllib3, json, boto3, time
+        ZipFile: !Sub |
+            import cfnresponse, urllib3, json
             region = "${AWS::Region}"
-            ec2Client = boto3.session.Session(region_name=region).client('ec2')
-            def waitForEndpointDeletion(vpcEndpointId):
-              while True:
-                try:
-                  status = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]['State']
-                  time.sleep(5)
-                except Exception as e: break
-            def waitForEndpoint(vpcEndpointId):
-              dnsName = None
-              hostedZoneId = None
-              while True: # Wait for the endpoint to become available
-                try:
-                  vpcEndpointInfo = ec2Client.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values': [vpcEndpointId]}])['VpcEndpoints'][0]
-                  if vpcEndpointInfo['State'] == 'available':
-                    if vpcEndpointInfo['PrivateDnsEnabled'] == True:
-                      dnsEntryInfo = vpcEndpointInfo['DnsEntries'][0]
-                      dnsName = dnsEntryInfo['DnsName']
-                      hostedZoneId = dnsEntryInfo['HostedZoneId']
-                    break
-                except Exception as e: print(str(e))
-                time.sleep(5)
-              return (dnsName, hostedZoneId)
             def checkForMissingProperty(properties, propertyName):
               if propertyName not in properties:
                 cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
@@ -476,73 +397,32 @@ Resources:
               if event['RequestType'] == 'Update': # No updates are supported
                 cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
                 return
-              for propertName in ('DatabricksAccountId', 'Username', 'Password', 'Service'):
+              for propertName in ('DatabricksAccountId', 'Username', 'Password'):
                 if checkForMissingProperty(event['ResourceProperties'], propertName): return
-              serviceName = "${ServiceNameWorkspace}" if event['ResourceProperties']['Service'] == 'Workspace' else "${ServiceNameBackend}"
               accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
               myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
               http = urllib3.PoolManager()
               if event['RequestType'] == 'Create':
-                for propertName in ('EndpointName', 'VpcId', 'Subnets', 'SecurityGroups'):
+                for propertName in ('EndpointName', 'VpcEndpointId', 'VpcId', 'Subnets', 'SecurityGroups'):
                   if checkForMissingProperty(event['ResourceProperties'], propertName): return
-                vpcEndpointId = None
-                try: # Create the endpoint in the VPC
-                  vpcEndpointId = ec2Client.create_vpc_endpoint(VpcEndpointType='Interface', VpcId=event['ResourceProperties']['VpcId'],
-                    ServiceName=serviceName, SubnetIds=event['ResourceProperties']['Subnets'], SecurityGroupIds=event['ResourceProperties']['SecurityGroups'],
-                    TagSpecifications=[{"ResourceType": "vpc-endpoint","Tags": [{"Key": "Owner", "Value": "${ResourceOwner}"}]}])['VpcEndpoint']['VpcEndpointId']
-                except Exception as e:
-                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
-                  return
-                postData = {"vpc_endpoint_name": event['ResourceProperties']['EndpointName'], "aws_vpc_endpoint_id": vpcEndpointId, "region": region}
+                postData = {"vpc_endpoint_name": event['ResourceProperties']['EndpointName'], "aws_vpc_endpoint_id": event['ResourceProperties']['VpcEndpointId'], "region": region}
                 response = http.request('POST', accountsAPIBaseURL + '/vpc-endpoints', headers=myHeaders, body = json.dumps(postData))
                 if response.status != 201:
-                  try:
-                    ec2Client.delete_vpc_endpoints(VpcEndpointIds = [vpcEndpointId])
-                    waitForEndpointDeletion(vpcEndpointId)
-                  except Exception as e: print(str(e))
                   errorMessage = 'Unknown Error'
                   try: errorMessage = json.loads(response.data.decode())['message']
                   except: errorMessage = response.reason
                   cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
                   return
                 dbsVpcEndpointId = json.loads(response.data.decode())['vpc_endpoint_id']
-                _ = waitForEndpoint(vpcEndpointId)
-                try:
-                  ec2Client.modify_vpc_endpoint(VpcEndpointId=vpcEndpointId, PrivateDnsEnabled=True)
-                except Exception as e:
-                  print(e)
-                  try: ec2Client.delete_vpc_endpoints(VpcEndpointIds = [vpcEndpointId])
-                  except: pass
-                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
-                  return
-                (dnsName, hostedZoneId) = waitForEndpoint(vpcEndpointId)
-                cfnresponse.send(event, context, cfnresponse.SUCCESS, {'DnsName': dnsName,'HostedZoneId':hostedZoneId}, dbsVpcEndpointId)
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, dbsVpcEndpointId)
               else: # 'Delete':
-                response = http.request('GET', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
+                response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + event['PhysicalResourceId'], headers=myHeaders)
                 if response.status != 200:
                   errorMessage = 'Unknown Error'
                   try: errorMessage = json.loads(response.data.decode())['message']
                   except: errorMessage = response.reason
                   print(errorMessage)
-                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
-                  return
-                endpointData = json.loads(response.data.decode())
-                vpc_endpoint_id = endpointData['vpc_endpoint_id']
-                aws_vpc_endpoint_id = endpointData['aws_vpc_endpoint_id']
-                try:
-                  ec2Client.delete_vpc_endpoints(VpcEndpointIds = [aws_vpc_endpoint_id])
-                  response = http.request('DELETE', accountsAPIBaseURL + '/vpc-endpoints/' + vpc_endpoint_id, headers=myHeaders)
-                  if response.status != 200:
-                    errorMessage = 'Unknown Error'
-                    try: errorMessage = json.loads(response.data.decode())['message']
-                    except: errorMessage = response.reason
-                    print(errorMessage)
-                  waitForEndpointDeletion(aws_vpc_endpoint_id)
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
-                except Exception as e:
-                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = str(e))
-          - ServiceNameWorkspace: !FindInMap [DatabricksAddresses, !Ref AWS::Region, workspace]
-            ServiceNameBackend: !FindInMap [DatabricksAddresses, !Ref AWS::Region, backend]
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
   VpcEnpointLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:

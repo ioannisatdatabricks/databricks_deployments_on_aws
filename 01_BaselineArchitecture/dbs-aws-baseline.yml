@@ -195,8 +195,8 @@ Resources:
               - s3:ListBucket
               - s3:GetBucketLocation
             Resource:
-              - !Sub arn:aws:s3:::${DBSRootBucketName}
-              - !Sub arn:aws:s3:::${DBSRootBucketName}/*
+              - !Sub arn:${AWS::Partition}:s3:::${DBSRootBucketName}
+              - !Sub arn:${AWS::Partition}:s3:::${DBSRootBucketName}/*
 
   # The VPC
   DBSVpc:
@@ -803,8 +803,14 @@ Resources:
       SecurityGroupIds:
         - !GetAtt DBSWorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSClusterSubnet1
-        - !Ref DBSClusterSubnet2
+        - !If
+          - CreateFirstSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet1
+          - !Ref DBSClusterSubnet1
+        - !If
+          - CreateSecondSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet2
+          - !Ref DBSClusterSubnet2
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -839,8 +845,14 @@ Resources:
       SecurityGroupIds:
         - !GetAtt DBSWorkspaceSecurityGroup.GroupId
       SubnetIds:
-        - !Ref DBSClusterSubnet1
-        - !Ref DBSClusterSubnet2
+        - !If
+          - CreateFirstSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet1
+          - !Ref DBSClusterSubnet1
+        - !If
+          - CreateSecondSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet2
+          - !Ref DBSClusterSubnet2
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -852,7 +864,43 @@ Resources:
               - kinesis:PutRecord
               - kinesis:PutRecords
               - kinesis:DescribeStream
-            Resource: !Sub arn:aws:kinesis:${AWS::Region}:414351767826:stream/*
+            Resource: !Sub arn:${AWS::Partition}:kinesis:${AWS::Region}:414351767826:stream/*
+
+  # The Databricks REST API endpoint
+  DBSRestApiInterfaceEndpoint:
+    Condition: EnablePrivateLink
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: !GetAtt DatabricksAddresses.Workspace
+      VpcEndpointType: Interface
+      VpcId: !Ref DBSVpc
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SubnetIds:
+        - !If
+          - CreateFirstSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet1
+          - !Ref DBSClusterSubnet1
+        - !If
+          - CreateSecondSubnetForPrivateLink
+          - !Ref DBSPrivateLinkSubnet2
+          - !Ref DBSClusterSubnet2
+
+  # The Databricks REST API endpoint
+  DBSRelayInterfaceEndpoint:
+    Condition: EnablePrivateLink
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: !GetAtt DatabricksAddresses.Backend
+      VpcEndpointType: Interface
+      VpcId: !Ref DBSVpc
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !GetAtt DBSWorkspaceSecurityGroup.GroupId
+      SubnetIds:
+        - !If [CreateFirstSubnetForPrivateLink, !Ref DBSPrivateLinkSubnet1, !Ref AWS::NoValue]
+        - !If [CreateSecondSubnetForPrivateLink, !Ref DBSPrivateLinkSubnet2, !Ref AWS::NoValue]
 
   # The KMS CMK for the notebook encryption
   EncryptionKey:
@@ -990,14 +1038,14 @@ Resources:
                   - ec2:AssociateIamInstanceProfile
                   - ec2:DisassociateIamInstanceProfile
                   - ec2:ReplaceIamInstanceProfileAssociation
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2TerminateInstancesTag
                 Effect: Allow
                 Action: ec2:TerminateInstances
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
@@ -1007,22 +1055,22 @@ Resources:
                   - ec2:AttachVolume
                   - ec2:DetachVolume
                 Resource:
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
-                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2CreateVolumeByTag
                 Effect: Allow
                 Action: ec2:CreateVolume
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
               - Sid: EC2DeleteVolumeByTag
                 Effect: Allow
                 Action: ec2:DeleteVolume
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
                 Condition:
                   "StringEquals":
                     "ec2:ResourceTag/Vendor": "Databricks"
@@ -1042,10 +1090,10 @@ Resources:
                   - ec2:AuthorizeSecurityGroupIngress
                   - ec2:RevokeSecurityGroupEgress
                   - ec2:RevokeSecurityGroupIngress
-                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${DBSWorkspaceSecurityGroup}
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${DBSWorkspaceSecurityGroup}
                 Condition:
                   "StringEquals":
-                    "ec2:vpc": !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${DBSVpc}
+                    "ec2:vpc": !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${DBSVpc}
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
@@ -1092,7 +1140,7 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
-      Service: Workspace
+      VpcEndpointId: !Ref DBSRestApiInterfaceEndpoint
       VpcId: !Ref DBSVpc
       Subnets:
         - !If
@@ -1115,7 +1163,7 @@ Resources:
       Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
-      Service: Backend
+      VpcEndpointId: !Ref DBSRelayInterfaceEndpoint
       VpcId: !Ref DBSVpc
       Subnets:
         - !If
