@@ -38,5 +38,12 @@ ParameterKey=DBSEncryptionKeyArn,ParameterValue=<ENCRYPTION_KEY_ARN> \
 ### Optional: existing alias for the key (without the "alias/" prefix)
 ParameterKey=DBSEncryptionKeyAlias,ParameterValue=<ENCRYPTION_KEY_ALIAS> \
 
-## Spark configuration
+## Cluster configuration
+Use the instance profile
+
+### Spark configuration
 spark.databricks.hive.metastore.glueCatalog.enabled true
+spark.sql.legacy.createHiveTableByDefault false
+
+### Environment variables
+REGION=eu-west-1
