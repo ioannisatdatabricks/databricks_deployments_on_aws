@@ -41,12 +41,6 @@ Resources:
       Password: !Ref DBSPassword
       EndpointName: String - The human-friendly name of the network object
       VpcEndpointId: String - The AWS VPC Endpoint Id
-      VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
-      Subnets:
-        - String - The AWS Id of the first private subnet in the above VPC
-        - String - The AWS Id of the second private subnet in the above VPC
-      SecurityGroups:
-        - String - The AWS Id of a security group attached to the created Databricks resources
 
   NetworkConfiguration:
     Type: Custom::NetworkConfiguration

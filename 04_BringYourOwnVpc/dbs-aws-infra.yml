@@ -837,16 +837,6 @@ Outputs:
     Description: The security group needed for the Databricks clusters
     Value: !Ref DBSWorkspaceSecurityGroup
 
-  PrivateLinkSubnet1:
-    Condition: CreateFirstSubnetForPrivateLink
-    Description: The Id of the first subnet for the PrivateLink endpoint
-    Value: !Ref DBSPrivateLinkSubnet1
-
-  PrivateLinkSubnet2:
-    Condition: CreateSecondSubnetForPrivateLink
-    Description: The Id of the second subnet for the PrivateLink endpoint
-    Value: !Ref DBSPrivateLinkSubnet2
-
   RestApiInterfaceEndpointId:
     Condition: EnablePrivateLink
     Description: The Id of the VPC Endpoint for the Databricks REST API

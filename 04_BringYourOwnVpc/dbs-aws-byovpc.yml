@@ -49,16 +49,6 @@ Parameters:
     Type: String
     Default: ''
 
-  PrivateLinkSubnetId1:
-    Description: The Id of the VPC subnet for the PrivateLink endpoint in the first availability zone
-    Type: String
-    Default: ""
-
-  PrivateLinkSubnetId2:
-    Description: The Id of the VPC subnet for the PrivateLink endpoint in the second availability zone
-    Type: String
-    Default: ""
-
   DBSEncryptionKeyArn:
     Description: The ARN of the KMS key used for the encryption/decryption of Databricks notebooks
     Type: String
@@ -98,12 +88,6 @@ Conditions:
 
   PublicAccessForPrivateLink:
     !Equals [!Ref DBSPrivateLinkMode, "PublicAccessEnabled"]
-
-  ExistsFirstSubnetForPrivateLink:
-    !Not [!Equals [!Ref PrivateLinkSubnetId1, ""] ]
-
-  ExistsSecondSubnetForPrivateLink:
-    !Not [!Equals [!Ref PrivateLinkSubnetId2, ""] ]
 
   UseEncryptionKey:
     !Not [!Equals [!Ref DBSEncryptionKeyArn, ""] ]
@@ -294,18 +278,6 @@ Resources:
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
       VpcEndpointId: !Ref RestApiInterfaceEndpointId
-      VpcId: !Ref VpcId
-      Subnets:
-        - !If
-          - ExistsFirstSubnetForPrivateLink
-          - !Ref PrivateLinkSubnetId1
-          - !Ref ClusterSubnetId1
-        - !If
-          - ExistsSecondSubnetForPrivateLink
-          - !Ref PrivateLinkSubnetId2
-          - !Ref ClusterSubnetId2
-      SecurityGroups:
-        - !Ref WorkspaceSecurityGroupId
 
   BackendVpcEnpoint:
     Condition: EnablePrivateLink
@@ -317,18 +289,6 @@ Resources:
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
       VpcEndpointId: !Ref RelayInterfaceEndpointId
-      VpcId: !Ref VpcId
-      Subnets:
-        - !If
-          - ExistsFirstSubnetForPrivateLink
-          - !Ref PrivateLinkSubnetId1
-          - !Ref ClusterSubnetId1
-        - !If
-          - ExistsSecondSubnetForPrivateLink
-          - !Ref PrivateLinkSubnetId2
-          - !Ref ClusterSubnetId2
-      SecurityGroups:
-        - !Ref WorkspaceSecurityGroupId
 
   DBSNetworkConfiguration:
     Type: Custom::DBSNetworkConfiguration

@@ -1141,18 +1141,6 @@ Resources:
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
       VpcEndpointId: !Ref DBSRestApiInterfaceEndpoint
-      VpcId: !Ref DBSVpc
-      Subnets:
-        - !If
-          - CreateFirstSubnetForPrivateLink
-          - !Ref DBSPrivateLinkSubnet1
-          - !Ref DBSClusterSubnet1
-        - !If
-          - CreateSecondSubnetForPrivateLink
-          - !Ref DBSPrivateLinkSubnet2
-          - !Ref DBSClusterSubnet2
-      SecurityGroups:
-        - !Ref DBSWorkspaceSecurityGroup
 
   BackendVpcEnpoint:
     Condition: EnablePrivateLink
@@ -1164,18 +1152,6 @@ Resources:
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
       VpcEndpointId: !Ref DBSRelayInterfaceEndpoint
-      VpcId: !Ref DBSVpc
-      Subnets:
-        - !If
-          - CreateFirstSubnetForPrivateLink
-          - !Ref DBSPrivateLinkSubnet1
-          - !Ref DBSClusterSubnet1
-        - !If
-          - CreateSecondSubnetForPrivateLink
-          - !Ref DBSPrivateLinkSubnet2
-          - !Ref DBSClusterSubnet2
-      SecurityGroups:
-        - !Ref DBSWorkspaceSecurityGroup
 
   DBSNetworkConfiguration:
     Type: Custom::DBSNetworkConfiguration

@@ -403,7 +403,7 @@ Resources:
               myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
               http = urllib3.PoolManager()
               if event['RequestType'] == 'Create':
-                for propertName in ('EndpointName', 'VpcEndpointId', 'VpcId', 'Subnets', 'SecurityGroups'):
+                for propertName in ('EndpointName', 'VpcEndpointId'):
                   if checkForMissingProperty(event['ResourceProperties'], propertName): return
                 postData = {"vpc_endpoint_name": event['ResourceProperties']['EndpointName'], "aws_vpc_endpoint_id": event['ResourceProperties']['VpcEndpointId'], "region": region}
                 response = http.request('POST', accountsAPIBaseURL + '/vpc-endpoints', headers=myHeaders, body = json.dumps(postData))

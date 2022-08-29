@@ -733,12 +733,6 @@ Resources:
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_workspaceVpcEndpoint
       VpcEndpointId: !Ref DBSRestApiInterfaceEndpoint
-      VpcId: !Ref DBSVpc
-      Subnets:
-        - !Ref DBSPrivateLinkSubnet1
-        - !Ref DBSPrivateLinkSubnet2
-      SecurityGroups:
-        - !Ref DBSWorkspaceSecurityGroup
 
   BackendVpcEnpoint:
     Type: Custom::BackendVpcEnpoint
@@ -749,12 +743,6 @@ Resources:
       Password: !Ref DBSPassword
       EndpointName: !Sub ${AWS::StackName}_backendVpcEndpoint
       VpcEndpointId: !Ref DBSRelayInterfaceEndpoint
-      VpcId: !Ref DBSVpc
-      Subnets:
-        - !Ref DBSPrivateLinkSubnet1
-        - !Ref DBSPrivateLinkSubnet2
-      SecurityGroups:
-        - !Ref DBSWorkspaceSecurityGroup
 
   DBSNetworkConfiguration:
     Type: Custom::DBSNetworkConfiguration
