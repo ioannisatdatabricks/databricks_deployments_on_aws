@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Deploying the resources for a Databricks Unity Catalog metastore
+
+#-------------------------------------------------------------------------
+Parameters:
+
+  DBSAccountId:
+    Description: The Databricks account id
+    Type: String
+
+  DBSUsername:
+    Description: The Databricks account user name
+    Type: String
+
+  DBSPassword:
+    Description: The Databricks account password
+    Type: String
+    NoEcho: true
+  
+  ResourceOwner:
+    Description: The value of the Owner tag in the created resources
+    Type: String
+
+  UCMetastoreDefaultStorageBucketName:
+    Description: The value of the S3 bucket used for the default storage of the managed tables in the metastore
+    Type: String
+
+  StorageCredentialsIAMRoleName:
+    Description: The name of the IAM role that will be assumed by Unity Catalog to access the metastore's S3 bucket
+    Type: String
+    Default: ''
+
+  DeltaSharingTokenLifetimeSeconds:
+    Description: The token lifetime in seconds for Delta Sharing
+    Type: Number
+    Default: 0
+
+  DeltaSharingOrgName:
+    Description: The organisation name for Databricks-to-Databricks Delta Sharing
+    Type: String
+    Default: ''
+
+Conditions:
+  IsDeltaSharingEnabled: !Not [ !Equals [ !Ref DeltaSharingTokenLifetimeSeconds, 0 ] ]
+  IsDeltaSharingOrgSpecified: !Not [ !Equals [ !Ref DeltaSharingOrgName, '' ] ]
+  IsIAMRoleNameSpecified: !Not [ !Equals [ !Ref StorageCredentialsIAMRoleName, '' ] ]
+
+Resources:
+
+  # The Bucket
+  UCMetastoreDefaultStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref UCMetastoreDefaultStorageBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+
+  # The IAM role for the storage credentials
+  StorageCredentialsIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !If
+        - IsIAMRoleNameSpecified
+        - !Ref StorageCredentialsIAMRoleName
+        - !Sub ${AWS::StackName}-UCMetastoreCredentials-${AWS::Region}
+      Description: The cross-account IAM role used by Databricks Unity Catalog to access the storage on S3
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              "AWS": arn:aws:iam::414351767826:role/unity-catalog-prod-UCMasterRole-14S5ZJVKOTYTL
+            Action:
+              - sts:AssumeRole
+            Condition:
+              "StringEquals":
+                "sts:ExternalId": !Ref DBSAccountId
+      Policies:
+        - PolicyName: !If
+          - IsIAMRoleNameSpecified
+          - !Sub ${StorageCredentialsIAMRoleName}-Policy
+          - !Sub ${AWS::StackName}-UCMetastoreCredentials-${AWS::Region}-Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: NonResourceBasedPermissions
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                  - s3:PutLifecycleConfiguration
+                Resource:
+                  - !GetAtt UCMetastoreDefaultStorageBucket.Arn
+                  - !Sub ${UCMetastoreDefaultStorageBucket.Arn}/*
+
+  # The Metastore
+  UnityCatalogMetastore:
+    Type: Custom::UnityCatalogMetastore
+    Properties:
+      ServiceToken: !ImportValue dbs-account-api-UCMetastoreFn-Arn
+      DatabricksAccountId: !Ref DBSAccountId
+      Username: !Ref DBSUsername
+      Password: !Ref DBSPassword
+      Name: !Sub default-${AWS::Region}
+      Bucket: !Ref UCMetastoreDefaultStorageBucket
+      StorageCredentialsRole: !GetAtt StorageCredentialsIAMRole.Arn
+      DeltaSharingTokenLifetimeSeconds: !If [IsDeltaSharingEnabled, !Ref DeltaSharingTokenLifetimeSeconds, !Ref AWS::NoValue]
+      DeltaSharingOrganisationName: !If [IsDeltaSharingOrgSpecified, !Ref DeltaSharingOrgName, !Ref AWS::NoValue]

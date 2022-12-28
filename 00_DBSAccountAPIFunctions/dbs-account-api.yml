@@ -8,11 +8,6 @@ Parameters:
     Description: The value of the Owner tag in the created resources on AWS
     Type: String
 
-  ResourcePrefix:
-    Description: The prefix for the created resource names
-    Type: String
-    Default: dbs-account-api
-
   ExistingRoleArnForLambda:
     Description: The ARN of an existing role for the custom resource Lambda functions
     Type: String
@@ -169,7 +164,7 @@ Resources:
     Condition: CreateRoleForLambda
     Type: AWS::IAM::Role
     Properties: 
-      RoleName: !Sub ${ResourcePrefix}-CustomResourceFunctionRole
+      RoleName: !Sub ${AWS::StackName}-CustomResourceFunctionRole
       Description: Basic execution role for the CloudFormation custom resource Lambda functions using the Databricks Account API
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -221,7 +216,7 @@ Resources:
   DatabricksAddressesFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-DatabricksAddresses
+      FunctionName: !Sub ${AWS::StackName}-DatabricksAddresses
       Description: The custom resource function to retrieve the public addresses of Databricks in the region
       Handler: index.lambda_handler
       MemorySize: 256
@@ -255,7 +250,7 @@ Resources:
   CredentialsConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-CredentialsConfiguration
+      FunctionName: !Sub ${AWS::StackName}-CredentialsConfiguration
       Description: The custom resource function to create a credentials configuration
       Handler: index.lambda_handler
       MemorySize: 256
@@ -316,7 +311,7 @@ Resources:
   StorageConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-StorageConfiguration
+      FunctionName: !Sub ${AWS::StackName}-StorageConfiguration
       Description: The custom resource function to create a storage configuration
       Handler: index.lambda_handler
       MemorySize: 256
@@ -377,7 +372,7 @@ Resources:
   VpcEnpointFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-VpcEnpoint
+      FunctionName: !Sub ${AWS::StackName}-VpcEnpoint
       Description: The custom resource function to create a Databricks VPC endpoint
       Handler: index.lambda_handler
       MemorySize: 256
@@ -434,7 +429,7 @@ Resources:
   NetworkConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-NetworkConfiguration
+      FunctionName: !Sub ${AWS::StackName}-NetworkConfiguration
       Description: The custom resource function to create a network configuration
       Handler: index.lambda_handler
       MemorySize: 256
@@ -510,7 +505,7 @@ Resources:
   PrivateAccessConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-PrivateAccessConfiguration
+      FunctionName: !Sub ${AWS::StackName}-PrivateAccessConfiguration
       Description: The custom resource function to create a private access configuration for a Databricks workspace
       Handler: index.lambda_handler
       MemorySize: 256
@@ -576,7 +571,7 @@ Resources:
   ManagedKeysConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-ManagedKeysConfiguration
+      FunctionName: !Sub ${AWS::StackName}-ManagedKeysConfiguration
       Description: The custom resource function to create a customer managed keys configuration
       Handler: index.lambda_handler
       MemorySize: 256
@@ -643,7 +638,7 @@ Resources:
   WorkspaceFn:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${ResourcePrefix}-Workspace
+      FunctionName: !Sub ${AWS::StackName}-Workspace
       Description: The custom resource function to create a Databricks workspace
       Handler: index.lambda_handler
       MemorySize: 256
@@ -721,6 +716,147 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${WorkspaceFn}
       RetentionInDays: 365
 
+  ### The Unity Catalog Metastore object
+  UCMetastoreFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-UCMetastore
+      Description: The custom resource function to create a Databricks Unity Catalog metastore
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
+      Runtime: python3.9
+      Timeout: 100
+      Code:
+        ZipFile: !Sub |
+          import cfnresponse, urllib3, json, time
+          def checkForMissingProperty(properties, propertyName):
+            if propertyName not in properties:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return True
+            return False
+          def lambda_handler(event, context):
+            for propertName in ('DatabricksAccountId', 'Username', 'Password'):
+              if checkForMissingProperty(event['ResourceProperties'], propertName): return
+            accountsAPIBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId']
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json'}
+            http = urllib3.PoolManager()
+            metastoreId = None if event['RequestType'] == 'Create' else event['PhysicalResourceId']
+            if event['RequestType'] in ('Create', 'Update'):
+              for propertName in ('Name', 'Bucket', 'StorageCredentialsRole'):
+                if checkForMissingProperty(event['ResourceProperties'], propertName): return
+              postData = {"name": event['ResourceProperties']['Name'],"storage_root": "s3://" + event['ResourceProperties']['Bucket'],"region":"${AWS::Region}"}
+              if event['RequestType'] == 'Create':
+                response = http.request('POST', accountsAPIBaseURL + '/metastores', headers=myHeaders, body = json.dumps(postData))
+                if int(response.status / 100) != 2:
+                  errorMessage = 'Unknown Error'
+                  try: errorMessage = json.loads(response.data.decode())['message']
+                  except: errorMessage = response.reason
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                  return
+                metastoreId = json.loads(response.data.decode())["metastore_id"]
+              dataAccessConfigurationInput = {
+                  "metastore_id": metastoreId, "name": metastoreId + "-data-access-config-" + str(int(time.time())),
+                  "aws_iam_role": {"role_arn": event['ResourceProperties']['StorageCredentialsRole']}, "is_default": True
+              }
+              response = http.request('POST', accountsAPIBaseURL + '/metastores/' + metastoreId + '/data-access-configurations', headers=myHeaders, body = json.dumps(dataAccessConfigurationInput))
+              if int(response.status / 100) != 2:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                res = http.request('DELETE', accountsAPIBaseURL + '/metastores/' + metastoreId + "?force=true", headers=myHeaders)
+                if int(res.status / 100) != 2:
+                  errorMessage = 'Unknown Error'
+                  try: errorMessage = json.loads(res.data.decode())['message']
+                  except: errorMessage = res.reason
+                  print(errorMessage)
+                return
+              dataAccessConfigId = json.loads(response.data.decode())["id"]
+              metastoreInfoInput = {"storage_root_credential_id": dataAccessConfigId}
+              if 'DeltaSharingTokenLifetimeSeconds' in event['ResourceProperties']:
+                metastoreInfoInput["delta_sharing_recipient_token_lifetime_in_seconds"] = int(event['ResourceProperties']['DeltaSharingTokenLifetimeSeconds'])
+                metastoreInfoInput["delta_sharing_scope"] = "INTERNAL_AND_EXTERNAL"
+                if 'DeltaSharingOrganisationName' in event['ResourceProperties']: metastoreInfoInput["delta_sharing_organization_name"] = event['ResourceProperties']['DeltaSharingOrganisationName']
+              response = http.request('PATCH', accountsAPIBaseURL + '/metastores/' + metastoreId, headers=myHeaders, body = json.dumps(metastoreInfoInput))
+              if int(response.status / 100) != 2:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                res = http.request('DELETE', accountsAPIBaseURL + '/metastores/' + metastoreId + "?force=true", headers=myHeaders)
+                if int(res.status / 100) != 2:
+                  errorMessage = 'Unknown Error'
+                  try: errorMessage = json.loads(res.data.decode())['message']
+                  except: errorMessage = res.reason
+                  print(errorMessage)
+                return
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, metastoreId)
+            else: # 'Delete':
+              response = http.request('DELETE', accountsAPIBaseURL + '/metastores/' + metastoreId + "?force=true", headers=myHeaders)
+              if int(response.status / 100) != 2:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                print(errorMessage)
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  UCMetastoreLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UCMetastoreFn}
+      RetentionInDays: 365
+
+  # The function for attaching the Unity Catalog Metastore on the workspace
+  UCMetastoreAssignmentFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-MetastoreAssignment
+      Description: The custom resource function to assign a workspace to a metastore
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Role: !If [CreateRoleForLambda, !GetAtt BaseLambdaRole.Arn, !Ref ExistingRoleArnForLambda]
+      Runtime: python3.9
+      Timeout: 25
+      Code:
+        ZipFile: |
+          import cfnresponse, urllib3, json
+          def checkForMissingProperty(event, propertyName):
+            if propertyName not in event['ResourceProperties']:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No " + propertyName + " property specified")
+              return True
+            return False
+          def lambda_handler(event, context):
+            if event['RequestType'] != 'Create':
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              return
+            for propertyName in ('DatabricksAccountId', 'Username', 'Password', 'MetastoreId', 'WorkspaceId', 'WorkspaceDeploymentName'):
+              if checkForMissingProperty(event, propertyName): return
+            http = urllib3.PoolManager()
+            myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json', 'Accept': 'application/json'}
+            metastoreAssignmentURL = 'https://' + event['ResourceProperties']['WorkspaceDeploymentName'] + '.cloud.databricks.com/api/2.0/unity-catalog/workspaces/' + event['ResourceProperties']['WorkspaceId'] + '/metastore'
+            putData = { "metastore_id": event['ResourceProperties']['MetastoreId'], "default_catalog_name": "hive_metastore" }
+            response = http.request('PUT', metastoreAssignmentURL, headers=myHeaders, body = json.dumps(putData))
+            if int(response.status / 100) != 2:
+              errorMessage = 'Unknown Error'
+              try: errorMessage = json.loads(response.data.decode())['message']
+              except: errorMessage = response.reason
+              cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+            else:
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, event['ResourceProperties']['MetastoreId'])
+      Tags:
+        - Key: Owner
+          Value: !Ref ResourceOwner
+  # The log group for this function
+  UCMetastoreAssignmentGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UCMetastoreAssignmentFn}
+      RetentionInDays: 365
 
 #-------------------------------------------------------------------------
 Outputs:
@@ -772,3 +908,15 @@ Outputs:
     Value: !GetAtt WorkspaceFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-WorkspaceFn-Arn
+
+  UCMetastoreFnArn:
+    Description: The ARN of the CFN function creating a Databricks Unity Catalog metastore
+    Value: !GetAtt UCMetastoreFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-UCMetastoreFn-Arn
+
+  UCMetastoreAssignmentFnArn:
+    Description: The ARN of the CFN function attaching a Databricks workspace to a Unity Catalog metastore
+    Value: !GetAtt UCMetastoreAssignmentFn.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-UCMetastoreAssignmentFn-Arn

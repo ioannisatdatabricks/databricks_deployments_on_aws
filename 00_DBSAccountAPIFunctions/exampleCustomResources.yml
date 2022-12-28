@@ -3,6 +3,14 @@ Description: Custom resources wrapping the Databricks Account API
 
 Parameters:
 
+  DatabricksAccountId:
+    Description: The Databricks account Id
+    Type: String
+
+  DBSUsername:
+    Description: The email address of the admin
+    Type: String
+
   DBSPassword:
     Description: The Databricks account password
     Type: String
@@ -13,9 +21,9 @@ Resources:
   CredentialsConfiguration:
     Type: Custom::CredentialsConfiguration
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: String - The Databricks account id
-      Username: String - The Databricks user name
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       CredentialsName: String - The human-friendly name of the credentials object
       CrossAccountRoleArn: String - The ARN of the cross-account role used by Databricks to deploy resources
@@ -24,9 +32,9 @@ Resources:
   StorageConfiguration:
     Type: Custom::StorageConfiguration
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: String - The Databricks account id
-      Username: String - The Databricks user name
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       StorageName: String - The human-friendly name of the storage object
       RootBucket: String - The name of the Databricks root S3 bucket
@@ -35,9 +43,9 @@ Resources:
   VpcEnpoint:
     Type: Custom::VpcEnpoint
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: String - The Databricks account id
-      Username: String - The Databricks user name
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       EndpointName: String - The human-friendly name of the network object
       VpcEndpointId: String - The AWS VPC Endpoint Id
@@ -45,9 +53,9 @@ Resources:
   NetworkConfiguration:
     Type: Custom::NetworkConfiguration
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: String - The Databricks account id
-      Username: String - The Databricks user name
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       NetworkName: String - The human-friendly name of the network object
       VpcId: String - The AWS Id of the VPC where the Databricks resources will be deployed
@@ -64,9 +72,9 @@ Resources:
   PrivateAccessConfiguration:
     Type: Custom::PrivateAccessConfiguration
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: String - The Databricks account id
-      Username: String - The Databricks user name
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       PrivateAccessSettingsName: String - The human-friendly name of the private access setings object
       PublicAccessEnabled: Boolean - A flag indicating whether the workspace is accessible from the public internet
@@ -77,9 +85,9 @@ Resources:
   ManagedKeysConfiguration:
     Type: Custom::ManagedKeysConfiguration
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: String - The Databricks account id
-      Username: String - The Databricks user name
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       KeyArn: String - The ARN of the KMS key used by Databricks for encrypting customer assets in the control and data planes
       KeyAlias: String - The alias of the KMS key used by Databricks for encrypting customer assets in the control and data planes
@@ -92,9 +100,9 @@ Resources:
   DatabricksWorkspace:
     Type: Custom::DatabricksWorkspace
     Properties:
-      ServiceToken: String - The ARN of the above Lambda function
-      DatabricksAccountId: String - The Databricks account id
-      Username: String - The Databricks user name
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
       Password: !Ref DBSPassword
       WorkspaceName: String - The human-friendly name of the workspace object
       CredentialsId: !Ref CredentialsConfiguration
@@ -103,3 +111,29 @@ Resources:
       ManagedServicesKeyId: !Ref ManagedKeysConfiguration
       StorageKeyId: !Ref ManagedKeysConfiguration
       PrivateAccessId: !Ref PrivateAccessConfiguration
+
+
+  UnityCatalogMetastore:
+    Type: Custom::UnityCatalogMetastore
+    Properties:
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
+      Password: !Ref DBSPassword
+      Name: String - the human-friendly name of the metastore object
+      Bucket: String - the name of the S3 bucket for the default storage location of managed tables in the metastore
+      StorageCredentialsRole: String - the IAM role to be assumed by Unity Catalog to access the above S3 bucket
+      DeltaSharingTokenLifetimeSeconds: Integer - the life time in seconds of the Delta Sharing token.
+      DeltaSharingOrganisationName: String - the organisation name used for Databricks-to-Databricks Delta Sharing
+
+
+  WorkspaceToMetastoreAssociation:
+    Type: Custom::WorkspaceToMetastoreAssociation
+    Properties:
+      ServiceToken: String - The ARN of the corresponding Lambda function
+      DatabricksAccountId: !Ref DatabricksAccountId
+      Username: !Ref DBSUsername
+      Password: !Ref DBSPassword
+      MetastoreId: !Ref UnityCatalogMetastore
+      WorkspaceId: !Ref DatabricksWorkspace
+      WorkspaceDeploymentName: !GetAtt UnityCatalogMetastore.DeploymentName
