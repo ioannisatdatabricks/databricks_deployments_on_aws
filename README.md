@@ -17,3 +17,15 @@ The folder 02_CrossRegionReplicatedBucket contains instructions, scripts and a C
 
 ## Accessing a remote S3 bucket using VPC peering
 The folder 03_VpcPeering contains instructions, scripts and a Cloudformation template that demonstrates how one can access through Databricks an S3 bucket which is located in a remote region by using VPC peering.
+
+## Setting up a workspace when the cloud resources (VPC, S3, etc) are already set up
+The folder 04_BringYourOwnVpc contains instructions and two Cloudformation templates that demonstrates how one can set up a Databricks workspace over existing AWS resources
+
+## Setting up a workspace without internet access
+The folder 05_ClosedWithGlue contains instructions and a Cloudformation template that demonstrates how one can set up a Databricks workspace without internet connectivity. To achieve that, Glue is set up to be used in place of the default hive metastore
+
+## Creating a Unity Catalog metastore
+The folder 06_UnityCatalogMetastore contains instructions and a Cloudformation template for creating a Unity Catalog metastore
+
+## Setting up a Unity Catalog - enabled workspace
+The folder 07_WorkspaceWithUnityCatalog contains instructions and a Cloudformation template for creating a workspace which is associated to either a new Unity Catalog metastore or an existing one in the region.

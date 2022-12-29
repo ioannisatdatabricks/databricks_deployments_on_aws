@@ -24,6 +24,8 @@ Parameters:
   UCMetastoreDefaultStorageBucketName:
     Description: The value of the S3 bucket used for the default storage of the managed tables in the metastore
     Type: String
+    AllowedPattern: '(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)'
+    ConstraintDescription: 3 to 63 characters; must contain only lowercase letters, numbers, periods (.), and dashes (-)
 
   StorageCredentialsIAMRoleName:
     Description: The name of the IAM role that will be assumed by Unity Catalog to access the metastore's S3 bucket

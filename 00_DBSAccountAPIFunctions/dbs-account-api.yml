@@ -1,18 +1,14 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Custom resources wrapping the Databricks Account API
 
-#-------------------------------------------------------------------------
 Parameters:
-
   ResourceOwner:
     Description: The value of the Owner tag in the created resources on AWS
     Type: String
-
   ExistingRoleArnForLambda:
     Description: The ARN of an existing role for the custom resource Lambda functions
     Type: String
     Default: ''
-
   IamRoleExtraTag1Key:
     Description: Key of the 1st optional extra tag for the Lambda execution IAM role
     Type: String
@@ -21,7 +17,6 @@ Parameters:
     Description: Value of the 1st optional extra tag for the Lambda execution IAM role
     Type: String
     Default: ''
-
   IamRoleExtraTag2Key:
     Description: Key of the 2nd optional extra tag for the Lambda execution IAM role
     Type: String
@@ -31,45 +26,15 @@ Parameters:
     Type: String
     Default: ''
 
-  IamRoleExtraTag3Key:
-    Description: Key of the 3rd optional extra tag for the Lambda execution IAM role
-    Type: String
-    Default: ''
-  IamRoleExtraTag3Value:
-    Description: Value of the 3rd optional extra tag for the Lambda execution IAM role
-    Type: String
-    Default: ''
-
-  IamRoleExtraTag4Key:
-    Description: Key of the 4th optional extra tag for the Lambda execution IAM role
-    Type: String
-    Default: ''
-  IamRoleExtraTag4Value:
-    Description: Value of the 4th optional extra tag for the Lambda execution IAM role
-    Type: String
-    Default: ''
-
-#-------------------------------------------------------------------------
 Conditions:
-
   CreateRoleForLambda:
     !Equals [!Ref ExistingRoleArnForLambda, ""]
-
   CreateOptionalIAMTag1:
     !And [!Not [!Equals [!Ref IamRoleExtraTag1Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag1Value, ""] ] ]
-
   CreateOptionalIAMTag2:
     !And [!Not [!Equals [!Ref IamRoleExtraTag2Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag2Value, ""] ] ]
 
-  CreateOptionalIAMTag3:
-    !And [!Not [!Equals [!Ref IamRoleExtraTag3Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag3Value, ""] ] ]
-
-  CreateOptionalIAMTag4:
-    !And [!Not [!Equals [!Ref IamRoleExtraTag4Key, ""] ], !Not [!Equals [!Ref IamRoleExtraTag4Value, ""] ] ]
-
-#-------------------------------------------------------------------------
 Mappings:
-
   DatabricksAddresses:
     us-east-1:
       "workspace": "com.amazonaws.vpce.us-east-1.vpce-svc-09143d1e626de2f04"
@@ -156,9 +121,7 @@ Mappings:
       "rds": "md1w81rjeh9i4n5.co1tih5pqdrl.ca-central-1.rds.amazonaws.com"
       "controlplane": "3.96.84.208/28"
 
-#-------------------------------------------------------------------------
 Resources:
-
   # Role for functions
   BaseLambdaRole:
     Condition: CreateRoleForLambda
@@ -201,17 +164,6 @@ Resources:
           - Key: !Ref IamRoleExtraTag2Key
             Value: !Ref IamRoleExtraTag2Value
           - !Ref AWS::NoValue
-        - !If
-          - CreateOptionalIAMTag3
-          - Key: !Ref IamRoleExtraTag3Key
-            Value: !Ref IamRoleExtraTag3Value
-          - !Ref AWS::NoValue
-        - !If
-          - CreateOptionalIAMTag4
-          - Key: !Ref IamRoleExtraTag4Key
-            Value: !Ref IamRoleExtraTag4Value
-          - !Ref AWS::NoValue
-
   # Databricks Addresses
   DatabricksAddressesFn:
     Type: AWS::Lambda::Function
@@ -244,8 +196,6 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${DatabricksAddressesFn}
       RetentionInDays: 365
-
-
   # Credentials configuration
   CredentialsConfigurationFn:
     Type: AWS::Lambda::Function
@@ -305,8 +255,6 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${CredentialsConfigurationFn}
       RetentionInDays: 365
-
-
   # Storage configuration
   StorageConfigurationFn:
     Type: AWS::Lambda::Function
@@ -366,9 +314,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${StorageConfigurationFn}
       RetentionInDays: 365
-
-
-  ### The VPC Endpoint for the Databricks AWS PrivateLink
+  # The VPC Endpoint for the Databricks AWS PrivateLink
   VpcEnpointFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -423,9 +369,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${VpcEnpointFn}
       RetentionInDays: 365
-
-
-  ### The network configuration
+  # The network configuration
   NetworkConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -499,9 +443,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${NetworkConfigurationFn}
       RetentionInDays: 365
-
-
-  ### The private access configuration
+  # The private access configuration
   PrivateAccessConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -565,9 +507,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${PrivateAccessConfigurationFn}
       RetentionInDays: 365
-
-
-  ### The managed keys configuration
+  # The managed keys configuration
   ManagedKeysConfigurationFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -632,9 +572,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${ManagedKeysConfigurationFn}
       RetentionInDays: 365
-
-
-  ### The workspace object
+  # The workspace object
   WorkspaceFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -715,8 +653,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${WorkspaceFn}
       RetentionInDays: 365
-
-  ### The Unity Catalog Metastore object
+  # The Unity Catalog Metastore object
   UCMetastoreFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -808,7 +745,6 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${UCMetastoreFn}
       RetentionInDays: 365
-
   # The function for attaching the Unity Catalog Metastore on the workspace
   UCMetastoreAssignmentFn:
     Type: AWS::Lambda::Function
@@ -821,7 +757,7 @@ Resources:
       Runtime: python3.9
       Timeout: 25
       Code:
-        ZipFile: |
+        ZipFile: !Sub |
           import cfnresponse, urllib3, json
           def checkForMissingProperty(event, propertyName):
             if propertyName not in event['ResourceProperties']:
@@ -832,12 +768,28 @@ Resources:
             if event['RequestType'] != 'Create':
               cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
               return
-            for propertyName in ('DatabricksAccountId', 'Username', 'Password', 'MetastoreId', 'WorkspaceId', 'WorkspaceDeploymentName'):
+            for propertyName in ('DatabricksAccountId', 'Username', 'Password', 'WorkspaceId', 'WorkspaceDeploymentName'):
               if checkForMissingProperty(event, propertyName): return
             http = urllib3.PoolManager()
             myHeaders = urllib3.util.make_headers(basic_auth = event['ResourceProperties']['Username'] + ':' + event['ResourceProperties']['Password']) | {'Content-Type': 'application/json', 'Accept': 'application/json'}
+            metastoreId = None
+            if 'MetastoreId' in event['ResourceProperties']: metastoreId = event['ResourceProperties']['MetastoreId']
+            else:
+              metastoreBaseURL = 'https://accounts.cloud.databricks.com/api/2.0/accounts/' + event['ResourceProperties']['DatabricksAccountId'] + '/metastores'
+              response = http.request('GET', metastoreBaseURL, headers=myHeaders)
+              if response.status != 200:
+                errorMessage = 'Unknown Error'
+                try: errorMessage = json.loads(response.data.decode())['message']
+                except: errorMessage = response.reason
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
+                return
+              metastoresInRegion = [metastore for metastore in json.loads(response.data.decode()) if metastore['cloud'] == 'aws' and metastore['region'] == '${AWS::Region}']
+              metastoreId = metastoresInRegion[0]['metastore_id'] if len(metastoresInRegion)>0 else None
+              if metastoreId is None:
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = "No Unity Catalog metastore found in the ${AWS::Region} region")
+                return
             metastoreAssignmentURL = 'https://' + event['ResourceProperties']['WorkspaceDeploymentName'] + '.cloud.databricks.com/api/2.0/unity-catalog/workspaces/' + event['ResourceProperties']['WorkspaceId'] + '/metastore'
-            putData = { "metastore_id": event['ResourceProperties']['MetastoreId'], "default_catalog_name": "hive_metastore" }
+            putData = { "metastore_id": metastoreId, "default_catalog_name": "hive_metastore" }
             response = http.request('PUT', metastoreAssignmentURL, headers=myHeaders, body = json.dumps(putData))
             if int(response.status / 100) != 2:
               errorMessage = 'Unknown Error'
@@ -845,76 +797,62 @@ Resources:
               except: errorMessage = response.reason
               cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason = errorMessage)
             else:
-              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, event['ResourceProperties']['MetastoreId'])
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, metastoreId)
       Tags:
         - Key: Owner
           Value: !Ref ResourceOwner
-  # The log group for this function
   UCMetastoreAssignmentGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub /aws/lambda/${UCMetastoreAssignmentFn}
       RetentionInDays: 365
 
-#-------------------------------------------------------------------------
 Outputs:
-
   DatabricksAddressesFnArn:
     Description: The ARN of the CFN function returning the Databricks public addresses
     Value: !GetAtt DatabricksAddressesFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-DatabricksAddressesFn-Arn
-
   CredentialsConfigurationFnArn:
     Description: The ARN of the CFN function creating a Databricks credentials configuration object
     Value: !GetAtt CredentialsConfigurationFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-CredentialsConfigurationFn-Arn
-
   StorageConfigurationFnArn:
     Description: The ARN of the CFN function creating a Databricks storage configuration object
     Value: !GetAtt StorageConfigurationFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-StorageConfigurationFn-Arn
-
   VpcEnpointFnArn:
     Description: The ARN of the CFN function creating a Databricks VPC endpoint
     Value: !GetAtt VpcEnpointFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-VpcEnpointFn-Arn
-
   PrivateAccessConfigurationFnArn:
     Description: The ARN of the CFN function creating a Databricks private access settings object
     Value: !GetAtt PrivateAccessConfigurationFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-PrivateAccessConfigurationFn-Arn
-
   NetworkConfigurationFnArn:
     Description: The ARN of the CFN function creating a Databricks network configuration object
     Value: !GetAtt NetworkConfigurationFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-NetworkConfigurationFn-Arn
-
   ManagedKeysConfigurationFnArn:
     Description: The ARN of the CFN function creating a Databricks managed keys configuration object
     Value: !GetAtt ManagedKeysConfigurationFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-ManagedKeysConfigurationFn-Arn
-
   WorkspaceFnArn:
     Description: The ARN of the CFN function creating a Databricks workspace
     Value: !GetAtt WorkspaceFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-WorkspaceFn-Arn
-
   UCMetastoreFnArn:
     Description: The ARN of the CFN function creating a Databricks Unity Catalog metastore
     Value: !GetAtt UCMetastoreFn.Arn
     Export:
       Name: !Sub ${AWS::StackName}-UCMetastoreFn-Arn
-
   UCMetastoreAssignmentFnArn:
     Description: The ARN of the CFN function attaching a Databricks workspace to a Unity Catalog metastore
     Value: !GetAtt UCMetastoreAssignmentFn.Arn
